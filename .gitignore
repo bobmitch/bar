@@ -1,0 +1,6 @@
+/vendor/
+/images/
+cmslog.txt
+/pdfs/
+*.zip
+*.tar
