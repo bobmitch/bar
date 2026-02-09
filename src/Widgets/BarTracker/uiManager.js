@@ -205,7 +205,7 @@ class UIManager {
                     </div>
                     <div class="trigger-control-item">
                         <span>Cooldown:</span>
-                        <span data-cooldown>${trigger.cooldown / 1000}s</span>
+                        <span data-cooldown>${trigger.cooldown}s</span>
                     </div>
                 </div>
             `;
