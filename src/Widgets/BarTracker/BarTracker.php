@@ -204,7 +204,11 @@ class BarTracker extends Widget {
 				echo $output_js . "\n";
 			}
 			?>
+		// render trigger list in UI
+		uiManager.initializeTriggerList();
 		</script>
+
+
 
 		<style>
 			<?php echo file_get_contents(__DIR__ . '/style.css'); ?>
