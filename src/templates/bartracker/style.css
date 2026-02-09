@@ -1,0 +1,82 @@
+/* 1. Use a more-intuitive box-sizing model */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+/* 2. Remove default margin */
+* {
+    margin: 0;
+}
+body {
+    /* 3. Add accessible line-height */
+    line-height: 1.5;
+    /* 4. Improve text rendering */
+    -webkit-font-smoothing: antialiased;
+    font-family:Arial, Helvetica, sans-serif;
+}
+/* 5. Improve media defaults */
+img, picture, video, canvas, svg {
+    display: block;
+    max-width: 100%;
+}
+/* 6. Inherit fonts for form controls */
+input, button, textarea, select {
+    font: inherit;
+}
+/* 7. Avoid text overflows */
+p, h1, h2, h3, h4, h5, h6 {
+    overflow-wrap: break-word;
+}
+/* 8. Improve line wrapping */
+p {
+    text-wrap: pretty;
+}
+h1, h2, h3, h4, h5, h6 {
+    text-wrap: balance;
+    margin-bottom:1em;
+    text-align:center;
+}
+/*
+9. Create a root stacking context
+*/
+#root, #__next {
+    isolation: isolate;
+}
+
+/* simple overrides */
+
+:root {
+    --border : rgba(0,0,0,0.1);
+    --standard-border-radius: 0.5rem;
+    --primary: 
+}
+body {
+    /* grid-template-columns: 1fr min(80rem, 90%) 1fr; */
+    display:block; /* negates grid above for now 
+    /* grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    min-height: 100dvh; */
+}
+input {
+    width:100%;
+}
+aside {
+    float:none;
+    width:auto;
+    margin-inline-start:0px;
+    padding:var(--gap);
+    font-size:inherit;
+}
+section {
+    margin:0px;
+    border-bottom:none;
+    padding:0px;
+}
+section:first-of-type {
+    margin-bottom:0px;
+}
+button, .button {
+    margin-bottom:0px;
+}
+img, video {
+    border-radius:0%;
+}

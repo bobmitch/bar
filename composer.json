@@ -1,4 +1,18 @@
 {
+    "name": "bobmitch/bar",
+    "description": "BAR Stuff",
+    "type": "project",
+    "authors": [
+        {
+            "name": "bobmitch",
+            "email": "bobmitch@gmail.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "bobmitch\\bar\\": "src/"
+        }
+    },
     "require": {
         "holtbosse/alba": "^3.18"
     }

@@ -35,7 +35,7 @@ $_ENV["cache_root"] = __DIR__;
 CMS::registerCoreControllerDir(__DIR__ . '/src/corecontrollers');
 Template::registerTemplateDir(__DIR__ . '/src/templates');
 Content::registerContentControllerDir(__DIR__ . "/src/controllers");
-Widget::registerWidgetDir(__DIR__ . '/src/Widgets', "Workaj\\Albatest\\Widgets\\");
-Plugin::registerPluginDir(__DIR__ . '/src/Plugins', "Workaj\\Albatest\\Plugins\\");
+Widget::registerWidgetDir(__DIR__ . '/src/Widgets', "bobmitch\\bar\\Widgets\\");
+Plugin::registerPluginDir(__DIR__ . '/src/Plugins', "bobmitch\\bar\\Plugins\\");
 
 CMS::Instance()->render();

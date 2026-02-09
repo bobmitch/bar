@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6be117ed42290c479b28041ebae1426c",
+    "content-hash": "0699e87466b29fd078ef52f2ed4b3dee",
     "packages": [
         {
             "name": "erusev/parsedown",
@@ -138,16 +138,16 @@
         },
         {
             "name": "holtbosse/form",
-            "version": "1.7.0",
+            "version": "1.9.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/HoltBosse/form.git",
-                "reference": "b420a53f1f3a7f3f0806f4771072c93c5ab2dd67"
+                "reference": "6a6441502af3b97f65245a9f365432482f285a44"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/HoltBosse/form/zipball/b420a53f1f3a7f3f0806f4771072c93c5ab2dd67",
-                "reference": "b420a53f1f3a7f3f0806f4771072c93c5ab2dd67",
+                "url": "https://api.github.com/repos/HoltBosse/form/zipball/6a6441502af3b97f65245a9f365432482f285a44",
+                "reference": "6a6441502af3b97f65245a9f365432482f285a44",
                 "shasum": ""
             },
             "require": {
@@ -170,9 +170,9 @@
             "description": "library for creating forms from json and php",
             "support": {
                 "issues": "https://github.com/HoltBosse/form/issues",
-                "source": "https://github.com/HoltBosse/form/tree/1.7.0"
+                "source": "https://github.com/HoltBosse/form/tree/1.9.0"
             },
-            "time": "2025-12-09T16:20:20+00:00"
+            "time": "2026-01-29T19:50:23+00:00"
         },
         {
             "name": "phpmailer/phpmailer",

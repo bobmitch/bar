@@ -1,0 +1,58 @@
+{
+	"title":"Triggers",
+	"id":"triggers",
+    "list":["repeatable"],
+	"fields": [
+		{
+			"type": "Text",
+			"label": "description",
+			"name": "description",
+			"id": "description",
+			"placeholder": "description",
+			"required": true,
+			"input_type": "text"
+		},
+        {
+            "type":"Checkbox",
+            "label": "Repeatable",
+            "name": "repeatable",
+            "id": "repeatable",
+            "description":"Uncheck if this can only happen once per match",
+            "default":1,
+            "required": true
+        },
+        {
+            "type":"Text",
+            "label": "Repeatable Interval (seconds)",
+            "name": "repeatable_interval",
+            "id": "repeatable_interval",
+            "description":"Seconds until this can happen again (if repeatable)",
+            "default":0,
+            "required": true
+        },
+		{
+			"type": "Textarea",
+			"label": "Conditions (JS)",
+			"name": "conditions",
+			"id": "conditions",
+			"required": true,
+			"placeholder":"(event) => return false;",
+			"description":"A CSV of valid JS anonymous functions that return true when the trigger should fire. Each function will be called with (event) parameters."
+		},
+		{
+			"type": "Textarea",
+			"label": "Actions (JS)",
+			"name": "actions",
+			"id": "actions",
+			"required": true,
+			"placeholder":"(event) => console.log('Action for: ',event);",
+			"description":"A CSV of valid JS anonymous functions that are called upon trigger firing. Each function will be called with (event) parameters." 
+		},
+		{
+			"type": "Image",
+			"name": "icon",
+			"id": "icon",
+			"required": false
+		}
+	]
+}
