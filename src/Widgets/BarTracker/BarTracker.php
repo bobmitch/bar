@@ -25,7 +25,7 @@ class BarTracker extends Widget {
 			<div id="audio-barrier">
 				<div class="modal-content bar-panel">
 					<h2>SYSTEM INITIALIZED</h2>
-					<p>ENABLE AUDIO SYNTHESIS FOR BATTLEFIELD INTEL</p>
+					<p>Click Required For Audio To Work :)</p>
 					<button id="start-btn" class="bar-btn-primary">INITIALIZE AUDIO</button>
 				</div>
 			</div>
