@@ -31,7 +31,7 @@ class BarTracker extends Widget {
 			</div>
 
 			<header class="bar-header">
-				<div class="bar-brand">BAR TRACKER <span class="v-tag">v2.0</span></div>
+				<div class="bar-brand">BAR TRACKER <span class="v-tag">v0.1 Alpha</span></div>
 				<div id="connection-status" class="status-badge disconnected">OFFLINE</div>
 				<div id="game-time" class="timer">00:00</div>
 			</header>
