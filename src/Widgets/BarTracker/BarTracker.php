@@ -20,32 +20,97 @@ class BarTracker extends Widget {
             echo "<script>window.uuid = " . json_encode($uuid) . ";</script>";
         }
 		?>
-		<div id="audio-barrier">
-			<div class="modal-content">
-				<h2>Welcome to the Site</h2>
-				<p>Click below to enable audio features.</p>
-				<button id="start-btn">Enter & Enable Audio</button>
+
+		<div class="bar-widget-container">
+			<div id="audio-barrier">
+				<div class="modal-content bar-panel">
+					<h2>SYSTEM INITIALIZED</h2>
+					<p>Click Required For Audio To Work :)</p>
+					<button id="start-btn" class="bar-btn-primary">INITIALIZE AUDIO</button>
+				</div>
 			</div>
+
+			<header class="bar-header">
+				<div class="bar-brand">BAR TRACKER <span class="v-tag">v0.1 Alpha</span></div>
+				<div id="connection-status" class="status-badge disconnected">OFFLINE</div>
+				<div id="game-time" class="timer">00:00</div>
+			</header>
+
+			<nav class="bar-tabs">
+				<button class="tab-btn active" data-tab="standard">DASHBOARD</button>
+				<button class="tab-btn" data-tab="triggers">TRIGGER LOGIC</button>
+				<button class="tab-btn" data-tab="streaming">STREAMING</button>
+			</nav>
+
+			<main class="bar-content">
+				<section id="standard-view" class="view-section active">
+					<div class="grid-layout">
+						<div class="bar-panel event-log-panel">
+							<h3>BATTLE LOG</h3>
+							<div id="event-log">
+								<div class="event-empty">WAITING FOR DATA STREAM...</div>
+							</div>
+						</div>
+						<div class="bar-panel stats-panel">
+							<h3>TEAM STATUS</h3>
+							<div id="status" class="status-text">INITIALIZING...</div>
+							<div id="tokenstuff" style="display:none;">
+								<?php 
+								$uuid = DB::fetch('select uuid from users where id=?', $_SESSION['user_id'] ?? 0)->uuid ?? 'unknown-uuid';
+								echo "<textarea>" . htmlspecialchars($uuid) . "</textarea>";
+								?>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<div id="streaming-mode" class="view-section">
+					<div id="streaming-widgets-container"></div>
+					<button id="exit-streaming-btn" class="bar-btn-small">Back to Dashboard</button>
+					<button id="edit-layout-btn" class="bar-btn-small">Edit Layout</button>
+				</div>
+
+				<div id="layout-mode" class="view-section">
+					<div class="layout-controls">
+						<button id="add-widget-dropdown-btn" class="bar-btn-primary">Add Widget</button>
+						<button id="save-layout-btn" class="bar-btn-primary">Save & Exit</button>
+						<button id="reset-layout-btn" class="bar-btn-small">Reset Defaults</button>
+						
+						<div id="widget-library-dropdown" class="bar-panel hidden">
+							<button class="widget-add-btn" data-widget="game-timer">⏱️ Timer</button>
+							<button class="widget-add-btn" data-widget="economy-minimal">💰 Economy</button>
+							<button class="widget-add-btn" data-widget="combat-overview">⚔️ Combat</button>
+							<button class="widget-add-btn" data-widget="trigger-panel">🎯 Alerts</button>
+						</div>
+					</div>
+					<div id="layout-widgets-container"></div>
+				</div>
+
+				<section id="triggers-view" class="view-section">
+					<div class="bar-panel full-width">
+						<div class="panel-header">
+							<h3>ACTIVE LOGIC TRIGGERS</h3>
+							<div class="panel-actions">
+								<button id="enable-all-triggers" class="bar-btn-small">ENABLE ALL</button>
+								<button id="disable-all-triggers" class="bar-btn-small">DISABLE ALL</button>
+							</div>
+						</div>
+						<p class="panel-sub">Real-time monitoring of all JavaScript triggers registered in the engine.</p>
+						<div id="trigger-list">
+							</div>
+					</div>
+				</section>
+
+				<section id="streaming-view" class="view-section">
+					<div class="bar-panel">
+						<h3>STREAMING OVERLAY</h3>
+						<p>Configure widgets for live broadcast integration.</p>
+					</div>
+				</section>
+			</main>
 		</div>
-		<h1>Bar Tracker Test Widget</h1>
-        <div id='tokenstuff'>
-            <?php 
-            //CMS::pprint_r ($_ENV);
-            //CMS::pprint_r ($_SESSION);
-            $uuid = DB::fetch('select uuid from users where id=?', $_SESSION['user_id'] ?? 0)->uuid ?? 'unknown-uuid';
-            echo "<textarea>" . htmlspecialchars($uuid) . "</textarea>";
-            ?>
-        </div>
 
-		<div id='connection-status'></div>
 
-		<div id='trigger-list'></div>
-
-		<div id="status">Init</div>
-
-		<div id="game-time"></div>
-
-		<div id="event-log" style="width:100%; height:80vh;"></div>
 		<script>
 			const units_string = `<?php echo file_get_contents(__DIR__ . '/units_en.json'); ?>`;
 			let units = JSON.parse(units_string);
@@ -53,6 +118,7 @@ class BarTracker extends Widget {
 
 		<script src="/src/Widgets/BarTracker/gameStateStore.js"></script>
     	<script src="/src/Widgets/BarTracker/triggerEngine.js"></script>
+		<script src="/src/Widgets/BarTracker/streamingWidgets.js"></script>
     	<script src="/src/Widgets/BarTracker/uiManager.js"></script>
     	<script src="/src/Widgets/BarTracker/eventHandler.js"></script>
 
@@ -123,7 +189,7 @@ class BarTracker extends Widget {
 				$output_js .= "id: " . $trigger->id . ",";
 				$output_js .= "name: \"" . $trigger->title . "\",";
 				$output_js .= "description: \"" . $trigger->description . "\",";
-				$output_js .= "cooldown: " . ($trigger->repeat_cooldown ?? 'triggerEngine.defaultCooldown') . ",";
+				$output_js .= "cooldown: " . ($trigger->repeatable_interval ? ($trigger->repeatable_interval * 1000) : 'triggerEngine.defaultCooldown') . ",";
 				$output_js .= "repeatable: " . ($trigger->repeatable===1 ? 'true' : 'false') . ",";
 				$output_js .= "conditions: [" . $conditions . "],";
 				$output_js .= "actions: [" . $actions . "]";
@@ -138,7 +204,11 @@ class BarTracker extends Widget {
 				echo $output_js . "\n";
 			}
 			?>
+		// render trigger list in UI
+		uiManager.initializeTriggerList();
 		</script>
+
+
 
 		<style>
 			<?php echo file_get_contents(__DIR__ . '/style.css'); ?>

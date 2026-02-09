@@ -18,6 +18,9 @@ class UIManager {
      */
 
     switchView(viewName) {
+
+        console.log('Switching to view:', viewName);
+
         // Hide all views
         document.querySelectorAll('.view-section').forEach(section => {
             section.classList.remove('active');
@@ -212,10 +215,19 @@ class UIManager {
             // Add toggle listener
             const toggle = triggerItem.querySelector('.trigger-toggle');
             toggle.addEventListener('click', () => {
-                const triggerId = toggle.dataset.triggerId;
+                // FIX: Convert the string from dataset into a Number
+                const triggerId = Number(toggle.dataset.triggerId); 
+                
                 const isEnabled = !toggle.classList.contains('enabled');
-                triggerEngine.setTriggerEnabled(triggerId, isEnabled);
-                toggle.classList.toggle('enabled');
+                
+                const success = triggerEngine.setTriggerEnabled(triggerId, isEnabled);
+                
+                if (success) {
+                    toggle.classList.toggle('enabled');
+                    console.log(`Trigger ${triggerId} enabled state set to: ${isEnabled}`);
+                } else {
+                    console.error(`Failed to find trigger with ID: ${triggerId} (Type: ${typeof triggerId})`);
+                }
             });
         }
     }
