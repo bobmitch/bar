@@ -189,7 +189,7 @@ class BarTracker extends Widget {
 				$output_js .= "id: " . $trigger->id . ",";
 				$output_js .= "name: \"" . $trigger->title . "\",";
 				$output_js .= "description: \"" . $trigger->description . "\",";
-				$output_js .= "cooldown: " . ($trigger->repeat_cooldown ?? 'triggerEngine.defaultCooldown') . ",";
+				$output_js .= "cooldown: " . ($trigger->repeatable_interval ? ($trigger->repeatable_interval * 1000) : 'triggerEngine.defaultCooldown') . ",";
 				$output_js .= "repeatable: " . ($trigger->repeatable===1 ? 'true' : 'false') . ",";
 				$output_js .= "conditions: [" . $conditions . "],";
 				$output_js .= "actions: [" . $actions . "]";
