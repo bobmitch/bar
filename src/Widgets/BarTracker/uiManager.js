@@ -18,6 +18,9 @@ class UIManager {
      */
 
     switchView(viewName) {
+
+        console.log('Switching to view:', viewName);
+
         // Hide all views
         document.querySelectorAll('.view-section').forEach(section => {
             section.classList.remove('active');

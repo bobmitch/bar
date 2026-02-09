@@ -382,7 +382,7 @@ class EventHandler {
         // Load streaming layout
 
         // TODO: streaming layout widget
-        //streamingWidgets.loadLayout();
+        streamingWidgets.loadLayout();
 
         // Connect to event stream
         this.connect(serverUrl);
@@ -404,6 +404,13 @@ class EventHandler {
 
     onTriggerFired(triggerEvent) {
         console.log('🔊 Trigger actions:', triggerEvent);
+
+        if (window.streamingWidgets) {
+            if (!streamingWidgets.triggerHistory) streamingWidgets.triggerHistory = [];
+            streamingWidgets.triggerHistory.push(triggerEvent);
+            // Keep only last 10
+            if (streamingWidgets.triggerHistory.length > 10) streamingWidgets.triggerHistory.shift();
+        }
 
         // Execute audio cues
         for (const action of triggerEvent.actions) {
