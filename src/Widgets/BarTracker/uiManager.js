@@ -75,7 +75,7 @@ class UIManager {
                 const damage = eventData?.damage || 0;
                 const unitName = eventData?.unitName || 'unknown';
                 const unitTeam = eventData?.unitTeam;
-                const isIncoming = unitTeam === myTeamID;
+                const isIncoming = true; // always incoming
                 const damageColor = isIncoming ? '#ff6b35' : '#00d084';
                 const damageLabel = isIncoming ? '🔴 INCOMING' : '🟢 OUTGOING';
                 details = `<span class="event-details" style="color: ${damageColor}; font-weight: 600;">
