@@ -4,18 +4,19 @@
  * Manages soundpack creation, audio file uploads, trigger mappings, and soundpack loading
  * 
  * Endpoints:
- *   POST   /api/soundpack/create      - Create new soundpack
- *   POST   /api/soundpack/upload      - Upload MP3 to trigger in soundpack
- *   POST   /api/soundpack/test-audio  - Test play audio file
- *   GET    /api/soundpack/load        - Load soundpack trigger mappings
- *   GET    /api/soundpack/list        - List all soundpacks for user
- *   DELETE /api/soundpack/remove      - Delete soundpack
- *   DELETE /api/soundpack/audio       - Remove audio from trigger
+ *   POST   /soundapi/soundpack/create      - Create new soundpack
+ *   POST   /soundapi/soundpack/upload      - Upload MP3 to trigger in soundpack
+ *   POST   /soundapi/soundpack/test-audio  - Test play audio file
+ *   GET    /soundapi/soundpack/load        - Load soundpack trigger mappings
+ *   GET    /soundapi/soundpack/list        - List all soundpacks for user
+ *   DELETE /soundapi/soundpack/remove      - Delete soundpack
+ *   DELETE /soundapi/soundpack/removeaudio       - Remove audio from trigger
  */
 
 namespace bartracker\controllers\soundpack;
 
 use HoltBosse\Alba\Core\CMS;
+use HoltBosse\Form\Input;
 use HoltBosse\DB\DB;
 
 class SoundpackController {
@@ -23,8 +24,8 @@ class SoundpackController {
     // Configuration constants
     const MAX_FILE_SIZE = 5242880; // 5MB in bytes
     const ALLOWED_MIMETYPES = ['audio/mpeg', 'audio/mp3'];
-    const AUDIO_UPLOAD_DIR = '/uploads/bartracker/audio/'; // Relative to web root
-    const AUDIO_STORAGE_DIR = __DIR__ . '/../../uploads/bartracker/audio/'; // Server path
+    const AUDIO_UPLOAD_DIR = '/src/audio/'; // Relative to web root
+    const AUDIO_STORAGE_DIR = __DIR__ . '/../../audio/'; // Server path
     
     private $userId;
     private $method;
@@ -44,7 +45,9 @@ class SoundpackController {
         
         $this->userId = $_SESSION['user_id'];
         $this->method = $_SERVER['REQUEST_METHOD'];
-        $this->action = $_GET['action'] ?? '';
+        $this->action = CMS::Instance()->uri_segments[2] ?? '';
+
+        //CMS::pprint_r("SoundpackController initialized with action: {$this->action} and method: {$this->method}");
         
         // Ensure upload directory exists
         if (!is_dir(self::AUDIO_STORAGE_DIR)) {
@@ -92,13 +95,13 @@ class SoundpackController {
                 break;
 
             case 'remove':
-                if ($this->method === 'DELETE') {
+                if ($this->method === 'POST') { // Using POST for delete due to PHP limitations
                     $this->removeSoundpack();
                 }
                 break;
 
-            case 'audio':
-                if ($this->method === 'DELETE') {
+            case 'removeaudio':
+                if ($this->method === 'POST') {
                     $this->removeAudio();
                 }
                 break;
@@ -123,16 +126,17 @@ class SoundpackController {
         }
 
         $title = htmlspecialchars(trim($title), ENT_QUOTES, 'UTF-8');
-
+        $alias = Input::stringURLSafe($title);
         try {
-            $result = DB::insert('bartracker_soundpacks', [
-                'user_id' => $this->userId,
-                'title' => $title,
-                'created_at' => date('Y-m-d H:i:s')
+            $result = DB::exec('INSERT INTO controller_soundpacks (alias, created_by, updated_by, is_public, title, content_type) VALUES (?, ?, ?, 0, ?, 3)', [
+                $alias,
+                $this->userId,
+                $this->userId,
+                $title
             ]);
 
             if ($result) {
-                $soundpackId = DB::lastInsertId();
+                $soundpackId = DB::getLastInsertedId();
                 $this->success('Soundpack created successfully', [
                     'id' => $soundpackId,
                     'title' => $title
@@ -161,7 +165,7 @@ class SoundpackController {
 
         // Verify soundpack belongs to user
         $soundpack = DB::fetch(
-            'SELECT id FROM bartracker_soundpacks WHERE id = ? AND user_id = ?',
+            'SELECT id FROM controller_soundpacks WHERE id = ? AND created_by = ?',
             [$soundpackId, $this->userId]
         );
 
@@ -197,7 +201,7 @@ class SoundpackController {
 
         // Delete old audio for this trigger+soundpack combo if exists
         $old = DB::fetch(
-            'SELECT filename FROM bartracker_trigger_sounds WHERE soundpack_id = ? AND trigger_id = ?',
+            'SELECT filename FROM controller_sounds WHERE sound_pack = ? AND trigger_id = ?',
             [$soundpackId, $triggerId]
         );
 
@@ -207,16 +211,16 @@ class SoundpackController {
 
         // Store in database
         try {
-            DB::delete('bartracker_trigger_sounds', [
-                'soundpack_id' => $soundpackId,
-                'trigger_id' => $triggerId
-            ]);
-
-            DB::insert('bartracker_trigger_sounds', [
-                'soundpack_id' => $soundpackId,
-                'trigger_id' => $triggerId,
-                'filename' => $filename,
-                'uploaded_at' => date('Y-m-d H:i:s')
+            DB::exec('delete from controller_sounds where sound_pack = ? and trigger_id = ?', [$soundpackId, $triggerId]);
+            $alias = Input::stringURLSafe($title);
+            DB::exec('insert into controller_sounds (title, alias, content_type, sound_pack, trigger_id, filename, created_by, updated_by) values (?, ?, 4, ?, ?, ?, ?, ?)', [
+                $filename,
+                $alias,
+                $soundpackId,
+                $triggerId,
+                $filename,
+                $this->userId,
+                $this->userId
             ]);
 
             $this->success('Audio file uploaded successfully', [
@@ -235,9 +239,8 @@ class SoundpackController {
      * Required POST: soundpack_id, trigger_id
      */
     private function testAudio() {
-        $soundpackId = intval($_POST['soundpack_id'] ?? 0);
-        $triggerId = intval($_POST['trigger_id'] ?? 0);
-
+        $soundpackId = intval((int)($_POST['soundpack_id'] ?? 0));
+        $triggerId = intval((int)($_POST['trigger_id'] ?? 0));
         if (!$soundpackId || !$triggerId) {
             $this->error('Soundpack ID and Trigger ID are required');
             return;
@@ -245,7 +248,7 @@ class SoundpackController {
 
         // Verify soundpack belongs to user
         $soundpack = DB::fetch(
-            'SELECT id FROM bartracker_soundpacks WHERE id = ? AND user_id = ?',
+            'SELECT id FROM controller_soundpacks WHERE id = ? AND created_by = ?',
             [$soundpackId, $this->userId]
         );
 
@@ -256,7 +259,7 @@ class SoundpackController {
 
         // Get audio filename
         $audio = DB::fetch(
-            'SELECT filename FROM bartracker_trigger_sounds WHERE soundpack_id = ? AND trigger_id = ?',
+            'SELECT filename FROM controller_sounds WHERE sound_pack = ? AND trigger_id = ?',
             [$soundpackId, $triggerId]
         );
 
@@ -292,7 +295,7 @@ class SoundpackController {
 
         // Verify soundpack belongs to user
         $soundpack = DB::fetch(
-            'SELECT id, title FROM bartracker_soundpacks WHERE id = ? AND user_id = ?',
+            'SELECT id, title FROM controller_soundpacks WHERE id = ? AND (created_by = ? OR is_public = 1)',
             [$soundpackId, $this->userId]
         );
 
@@ -304,7 +307,7 @@ class SoundpackController {
         // Get all trigger->audio mappings
         try {
             $sounds = DB::fetchAll(
-                'SELECT trigger_id, filename FROM bartracker_trigger_sounds WHERE soundpack_id = ?',
+                'SELECT trigger_id, filename FROM controller_sounds WHERE sound_pack = ?',
                 [$soundpackId]
             );
 
@@ -332,7 +335,7 @@ class SoundpackController {
     private function listSoundpacks() {
         try {
             $soundpacks = DB::fetchAll(
-                'SELECT id, title, created_at FROM bartracker_soundpacks WHERE user_id = ? ORDER BY created_at DESC',
+                'SELECT id, title, created FROM controller_soundpacks WHERE (created_by = ? OR is_public = 1) ORDER BY created DESC',
                 [$this->userId]
             );
 
@@ -349,8 +352,8 @@ class SoundpackController {
      * Required DELETE: soundpack_id
      */
     private function removeSoundpack() {
+        $raw_input = file_get_contents('php://input');
         $soundpackId = intval($_POST['soundpack_id'] ?? $_GET['soundpack_id'] ?? 0);
-
         if (!$soundpackId) {
             $this->error('Soundpack ID is required');
             return;
@@ -358,7 +361,7 @@ class SoundpackController {
 
         // Verify ownership
         $soundpack = DB::fetch(
-            'SELECT id FROM bartracker_soundpacks WHERE id = ? AND user_id = ?',
+            'SELECT id FROM controller_soundpacks WHERE id = ? AND created_by = ?',
             [$soundpackId, $this->userId]
         );
 
@@ -370,9 +373,10 @@ class SoundpackController {
         try {
             // Get all audio files associated with this soundpack
             $sounds = DB::fetchAll(
-                'SELECT filename FROM bartracker_trigger_sounds WHERE soundpack_id = ?',
+                'SELECT filename FROM controller_sounds WHERE sound_pack = ?',
                 [$soundpackId]
             );
+
 
             // Delete audio files from disk
             foreach ($sounds as $sound) {
@@ -383,8 +387,8 @@ class SoundpackController {
             }
 
             // Delete database records
-            DB::delete('bartracker_trigger_sounds', ['soundpack_id' => $soundpackId]);
-            DB::delete('bartracker_soundpacks', ['id' => $soundpackId]);
+            DB::exec('delete from controller_sounds where sound_pack = ?', [$soundpackId]);
+            DB::exec('delete from controller_soundpacks where id = ?', [$soundpackId]);
 
             $this->success('Soundpack deleted successfully');
         } catch (\Exception $e) {
@@ -407,7 +411,7 @@ class SoundpackController {
 
         // Verify ownership
         $soundpack = DB::fetch(
-            'SELECT id FROM bartracker_soundpacks WHERE id = ? AND user_id = ?',
+            'SELECT id FROM controller_soundpacks WHERE id = ? AND created_by = ?',
             [$soundpackId, $this->userId]
         );
 
@@ -419,7 +423,7 @@ class SoundpackController {
         try {
             // Get audio file
             $sound = DB::fetch(
-                'SELECT filename FROM bartracker_trigger_sounds WHERE soundpack_id = ? AND trigger_id = ?',
+                'SELECT filename FROM controller_sounds WHERE sound_pack = ? AND trigger_id = ?',
                 [$soundpackId, $triggerId]
             );
 
@@ -429,10 +433,7 @@ class SoundpackController {
                     @unlink($filepath);
                 }
 
-                DB::delete('bartracker_trigger_sounds', [
-                    'soundpack_id' => $soundpackId,
-                    'trigger_id' => $triggerId
-                ]);
+                DB::exec('delete from controller_sounds where sound_pack = ? and trigger_id = ?', [$soundpackId, $triggerId]);
             }
 
             $this->success('Audio file removed');

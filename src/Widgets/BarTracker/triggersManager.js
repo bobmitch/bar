@@ -142,7 +142,7 @@ class TriggersManager {
      */
     async loadSoundpacks() {
         try {
-            const response = await fetch('/api/soundpack/list', {
+            const response = await fetch('/soundapi/soundpack/list', {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -176,7 +176,7 @@ class TriggersManager {
             const formData = new FormData();
             formData.append('title', title);
 
-            const response = await fetch('/api/soundpack/create', {
+            const response = await fetch('/soundapi/soundpack/create', {
                 method: 'POST',
                 body: formData
             });
@@ -208,8 +208,9 @@ class TriggersManager {
             const formData = new FormData();
             formData.append('soundpack_id', soundpackId);
 
-            const response = await fetch('/api/soundpack/remove', {
-                method: 'DELETE',
+            // would like to use DELETE method, but PHP is a lil' bitch
+            const response = await fetch('/soundapi/soundpack/remove', {
+                method: 'POST',
                 body: formData
             });
 
@@ -487,7 +488,7 @@ class TriggersManager {
             formData.append('trigger_id', triggerId);
             formData.append('audio_file', file);
 
-            const response = await fetch('/api/soundpack/upload', {
+            const response = await fetch('/soundapi/soundpack/upload', {
                 method: 'POST',
                 body: formData
             });
@@ -509,6 +510,7 @@ class TriggersManager {
             if (progressDiv) {
                 progressDiv.style.display = 'none';
             }
+            // TODO update gui to reflect new audio assignment without full re-render (currently causes flash and resets scroll position)
         }
     }
 
@@ -519,13 +521,12 @@ class TriggersManager {
         if (!this.activeSoundpackId) return;
 
         try {
-            const response = await fetch('/api/soundpack/test-audio', {
+            const formData = new FormData();
+            formData.append('soundpack_id', this.activeSoundpackId);
+            formData.append('trigger_id', triggerId);
+            const response = await fetch('/soundapi/soundpack/test-audio', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    soundpack_id: this.activeSoundpackId,
-                    trigger_id: triggerId
-                })
+                body: formData
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -560,8 +561,8 @@ class TriggersManager {
             formData.append('soundpack_id', this.activeSoundpackId);
             formData.append('trigger_id', triggerId);
 
-            const response = await fetch('/api/soundpack/audio', {
-                method: 'DELETE',
+            const response = await fetch('/soundapi/soundpack/removeaudio', {
+                method: 'POST',
                 body: formData
             });
 
