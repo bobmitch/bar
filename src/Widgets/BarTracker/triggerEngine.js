@@ -281,7 +281,7 @@ class TriggerEngine {
             console.log(`📦 Loading soundpack ${soundpackId}...`);
 
             const response = await fetch(
-                `/api/soundpack/load?soundpack_id=${soundpackId}`,
+                `/soundapi?action=load&soundpack_id=${soundpackId}`,
                 {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' }
@@ -483,6 +483,7 @@ class TriggerEngine {
 
 // Singleton instance
 const triggerEngine = new TriggerEngine();
+triggerEngine.loadSoundpack(1);
 
 // Expose for console debugging
 window.triggerEngine = triggerEngine;

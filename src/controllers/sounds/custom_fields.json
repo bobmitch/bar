@@ -13,6 +13,16 @@
 			"required": true
 		},
 		{
+			"type":"ContentSelector",
+			"label": "Trigger",
+			"name": "trigger_id",
+			"id": "trigger_id",
+			"description":"Select a trigger.",
+			"default":1,
+			"content_type":2,
+			"required": true
+		},
+		{
 			"type": "Text",
 			"label": "Filename",
 			"name": "filename",
