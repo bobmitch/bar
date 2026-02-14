@@ -92,9 +92,36 @@ class StreamingWidgetSystem {
      */
 
     switchToStreamingMode() {
-        document.getElementById('streaming-mode').classList.add('active');
-        document.getElementById('layout-mode').classList.remove('active');
-        this.layoutMode = false;
+        // Safely get and hide standard view
+        const standardView = document.getElementById('standard-view');
+        if (standardView) {
+            standardView.classList.remove('active');
+        }
+
+        // Show streaming view
+        const streamingView = document.getElementById('streaming-view');
+        if (streamingView) {
+            streamingView.classList.add('active');
+        }
+
+        this.streamingMode = true;
+        this.renderStreamingWidgets();
+    }
+
+    switchToNormalMode() {
+        // Safely get and hide streaming view
+        const streamingView = document.getElementById('streaming-view');
+        if (streamingView) {
+            streamingView.classList.remove('active');
+        }
+
+        // Show standard view
+        const standardView = document.getElementById('standard-view');
+        if (standardView) {
+            standardView.classList.add('active');
+        }
+
+        this.streamingMode = false;
         this.renderStreamingWidgets();
     }
 

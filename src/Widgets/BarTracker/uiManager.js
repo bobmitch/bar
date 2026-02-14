@@ -175,66 +175,41 @@ class UIManager {
      */
 
     initializeTriggerList() {
-        const triggerList = document.getElementById('trigger-list');
-        const triggers = triggerEngine.getAllTriggers();
+    const container = document.getElementById('trigger-list');
+    if (!container) return;
 
-        triggerList.innerHTML = '';
-
-        for (const trigger of triggers) {
-            const triggerItem = document.createElement('div');
-            triggerItem.className = 'trigger-item';
-            triggerItem.id = `trigger-${trigger.id}`;
-
-            const lastFired = trigger.state.lastFired 
-                ? new Date(trigger.state.lastFired).toLocaleTimeString()
-                : 'Never';
-
-            triggerItem.innerHTML = `
-                <div class="trigger-header">
-                    <div>
-                        <div class="trigger-name">${trigger.name}</div>
-                        <div class="trigger-description">${trigger.description}</div>
-                    </div>
-                    <div class="trigger-toggle ${trigger.enabled ? 'enabled' : ''}" 
-                         data-trigger-id="${trigger.id}"></div>
-                </div>
-                <div class="trigger-controls">
-                    <div class="trigger-control-item">
-                        <span>Last Fired:</span>
-                        <span data-last-fired>${lastFired}</span>
-                    </div>
-                    <div class="trigger-control-item">
-                        <span>Count:</span>
-                        <span data-fire-count>${trigger.state.fireCount}</span>
-                    </div>
-                    <div class="trigger-control-item">
-                        <span>Cooldown:</span>
-                        <span data-cooldown>${trigger.cooldown / 1000}s</span>
-                    </div>
-                </div>
-            `;
-
-            triggerList.appendChild(triggerItem);
-
-            // Add toggle listener
-            const toggle = triggerItem.querySelector('.trigger-toggle');
-            toggle.addEventListener('click', () => {
-                // FIX: Convert the string from dataset into a Number
-                const triggerId = Number(toggle.dataset.triggerId); 
-                
-                const isEnabled = !toggle.classList.contains('enabled');
-                
-                const success = triggerEngine.setTriggerEnabled(triggerId, isEnabled);
-                
-                if (success) {
-                    toggle.classList.toggle('enabled');
-                    console.log(`Trigger ${triggerId} enabled state set to: ${isEnabled}`);
-                } else {
-                    console.error(`Failed to find trigger with ID: ${triggerId} (Type: ${typeof triggerId})`);
-                }
-            });
-        }
+    const triggers = triggerEngine.getAllTriggers();
+    
+    if (triggers.length === 0) {
+        container.innerHTML = '<p class="empty-state">No triggers registered</p>';
+        return;
     }
+
+    const html = triggers.map(trigger => {
+        // Get state from triggerEngine's internal state tracking
+        const state = triggerEngine.triggerStates?.get(trigger.id) || {
+            lastFired: null,
+            fireCount: 0,
+            enabled: true
+        };
+
+        return `
+            <div class="trigger-item" data-trigger-id="${trigger.id}">
+                <div class="trigger-header">
+                    <h5>${trigger.name}</h5>
+                    <p class="description">${trigger.description || ''}</p>
+                </div>
+                <div class="trigger-stats">
+                    <span>Fired: ${state.fireCount}</span>
+                    <span>Last: ${state.lastFired ? new Date(state.lastFired).toLocaleTimeString() : 'Never'}</span>
+                    <span>${state.enabled ? '✓ Enabled' : '✗ Disabled'}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
 
     updateTriggerFiredState(triggerId) {
         const triggerItem = document.getElementById(`trigger-${triggerId}`);
