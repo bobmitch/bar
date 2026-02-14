@@ -28,7 +28,9 @@ class UserLogin extends Widget {
                 if ((int)$user->state === 1) {
                     $_SESSION['user_id'] = $user->id;
                     $_SESSION['username'] = $user->username;
-                    $message = "<div class='alert success'>Login successful! Welcome back, " . htmlspecialchars($user->username) . ".</div>";
+                    CMS::Instance()->queue_message("Login successful! Welcome back, " . htmlspecialchars($user->username) . ".", "success","/tracker");
+                    die(); // should not reach here due to redirect, but just in case
+                    //$message = "<div class='alert success'>Login successful! Welcome back, " . htmlspecialchars($user->username) . ".</div>";
                 } else {
                     $message = "<div class='alert error'>Account not verified. Please check your email.</div>";
                 }

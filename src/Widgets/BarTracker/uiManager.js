@@ -73,13 +73,17 @@ class UIManager {
                 details = `<span class="event-details">✓ ${getName(unitName)} completed</span>`;
             } else if (eventType === 'UnitDamaged') {
                 const damage = eventData?.damage || 0;
-                const unitName = eventData?.unitName || 'unknown';
+                const unitID = eventData?.unitID;
+                // lookup from gameState, we don't send with dmg event, should be present in gameState already, and this way we can get the most up to date name in case it changed since the event was sent
+                const unitName = gameState.units.get(unitID)?.unitName || 'unknown';
+                const unitNameReadable = units.units.names[unitName] || unitName || 'unknown';
+                //const unitName = eventData?.unitName || 'unknown';
                 const unitTeam = eventData?.unitTeam;
                 const isIncoming = true; // always incoming
                 const damageColor = isIncoming ? '#ff6b35' : '#00d084';
                 const damageLabel = isIncoming ? '🔴 INCOMING' : '🟢 OUTGOING';
                 details = `<span class="event-details" style="color: ${damageColor}; font-weight: 600;">
-                    ${damageLabel} ${Math.round(damage)} dmg to ${getName(unitName)}
+                    ${damageLabel} ${Math.round(damage)} dmg to ${getName(unitNameReadable)}
                 </span>`;
             } else if (eventType === 'UnitDestroyed') {
                 const unitName = eventData?.unitName || 'unknown';

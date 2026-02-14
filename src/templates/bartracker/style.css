@@ -80,3 +80,33 @@ button, .button {
 img, video {
     border-radius:0%;
 }
+
+.alert.notification {
+    position: fixed;
+    background: black;
+    width: 100vw;
+    padding: 1rem;
+    text-align: center;
+    opacity:1;
+    color:white;
+    text-align:center;
+    button {
+        display:none;
+    }
+    animation: fadeOut 1s ease-in 5s forwards; 
+}
+
+@keyframes fadeOut {
+    /* At the start of the fade (after the 5s delay) */
+    from {
+        opacity: 1;
+    }
+    /* At the end of the fade (1s later) */
+    to {
+        opacity: 0;
+        /* Optional: hide the element completely and remove it from the flow after the animation finishes */
+        visibility: hidden; 
+        /* The display property can be animated in modern browsers (Chrome 116+) */
+        display: none; 
+    }
+}

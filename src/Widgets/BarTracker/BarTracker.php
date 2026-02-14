@@ -113,7 +113,14 @@ class BarTracker extends Widget {
 
 		<script>
 			const units_string = `<?php echo file_get_contents(__DIR__ . '/units_en.json'); ?>`;
+			const unitDefs_string = `<?php echo file_get_contents(__DIR__ . '/unitDefs.json'); ?>`;
 			let units = JSON.parse(units_string);
+			console.log("Cached units loaded:", units);
+			let unitDefs_raw = JSON.parse(unitDefs_string);
+			console.log("Cached unitDefs raw data loaded:", unitDefs_raw);
+			let unitDefs = unitDefs_raw.d.unitDefs;
+			console.log("Cached unit definitions loaded:", unitDefs);
+			// unitDefs can be overriden by allUnits event, which is more real-time, but we keep this as a fallback and for reference in triggers
 		</script>
 
 		<script src="/src/Widgets/BarTracker/gameStateStore.js"></script>
