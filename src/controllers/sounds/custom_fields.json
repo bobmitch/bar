@@ -1,6 +1,7 @@
 {
 	"title":"Sounds",
 	"id":"sounds",
+	"list":["sound_pack", "trigger_id"],
 	"fields": [
 		{
 			"type":"ContentSelector",

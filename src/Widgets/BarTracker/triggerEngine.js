@@ -281,7 +281,7 @@ class TriggerEngine {
             console.log(`📦 Loading soundpack ${soundpackId}...`);
 
             const response = await fetch(
-                `/soundapi?action=load&soundpack_id=${soundpackId}`,
+                `/soundapi/soundpack/load?soundpack_id=${soundpackId}`,
                 {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' }
@@ -395,6 +395,7 @@ class TriggerEngine {
                 ...state
             });
         }
+        console.log(`Retrieved all triggers with states:`, result);
         return result;
     }
 

@@ -825,3 +825,7 @@ body.bar-enabled {
         padding: 16px;
     }
 }
+
+h5, p {
+    color:white;
+}

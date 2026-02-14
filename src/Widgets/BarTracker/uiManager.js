@@ -21,6 +21,12 @@ class UIManager {
 
         console.log('Switching to view:', viewName);
 
+        if (this.currentView === viewName) return;
+
+        if (viewName === 'triggers') {
+            this.initializeTriggerList();
+        }
+
         // Hide all views
         document.querySelectorAll('.view-section').forEach(section => {
             section.classList.remove('active');
