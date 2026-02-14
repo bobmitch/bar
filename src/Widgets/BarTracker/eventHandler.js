@@ -53,6 +53,7 @@ class EventHandler {
 
     handleMessage(event) {
         try {
+            console.log('📩 Event received:', event);
             const data = JSON.parse(event.data);
             const eventType = data.event;
 
@@ -129,6 +130,9 @@ class EventHandler {
                 break;
             case 'AllyStatesUpdate':
                 this.handleAllyStates(data);
+                break;
+            case 'AllUnits':
+                this.handleUpdateAllUnits(data);
                 break;
         }
     }
@@ -234,6 +238,11 @@ class EventHandler {
             attacker: data.attackerName,
             metalLost: data.unitMetalCost
         });
+    }
+
+    handleUpdateAllUnits(data) {
+        console.log('📦 Received allUnits update with', Object.keys(data.unitDefs).length, 'units');
+        unitDefs = data.unitDefs;
     }
 
     handleFullStatsUpdate(data) {
