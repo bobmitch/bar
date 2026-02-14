@@ -1,0 +1,34 @@
+{
+	"title":"Sounds",
+	"id":"sounds",
+	"fields": [
+		{
+			"type":"ContentSelector",
+			"label": "Sound Pack",
+			"name": "sound_pack",
+			"id": "sound_pack",
+			"description":"Select a sound pack.",
+			"default":1,
+			"content_type":3,
+			"required": true
+		},
+		{
+			"type": "Text",
+			"label": "Filename",
+			"name": "filename",
+			"id": "filename",
+			"description":"UUID.mp3 (Example: 123e4567-e89b-12d3-a456-426614174000.mp3)",
+			"default":"",
+			"required": false
+		},
+		{
+			"type": "Text",
+			"label": "Volume",
+			"name": "volume",
+			"id": "volume",
+			"description":"Volume of the sound (float). Example: 0.5 for 50% volume.",
+			"default":"1.0",
+			"required": false
+		}
+	]
+}

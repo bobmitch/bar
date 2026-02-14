@@ -1,0 +1,16 @@
+{
+	"title":"Soundpacks",
+	"id":"soundpacks",
+    "list":["is_public"],
+	"fields": [
+		{
+			"type":"Checkbox",
+			"label": "Public",
+			"name": "is_public",
+			"id": "is_public",
+			"description":"Check if any user can use this sound pack. Uncheck if this is only for personal use.",
+			"default":0,
+			"required": true
+		}
+	]
+}
