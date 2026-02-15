@@ -22,6 +22,33 @@ class TriggerEngine {
         
         // Initialize Web Audio API
         this.initializeAudio();
+
+        this.activeSoundpackIsOwner = false;
+
+    }
+
+    async loadSoundpack(soundpackId) {
+        try {
+            console.log(`📦 Loading soundpack ${soundpackId}...`);
+            const response = await fetch(`/soundapi/soundpack/load?soundpack_id=${soundpackId}`);
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            this.soundpacks.set(soundpackId, result.data.triggers);
+            this.activeSoundpackId = soundpackId;
+            this.activeSoundpackIsOwner = result.data.is_owner; // Store ownership state
+
+            // Persist the last used soundpack ID
+            localStorage.setItem('BAR-active-soundpack-id', soundpackId);
+
+            console.log(`✅ Soundpack loaded: ${result.data.title} (Owner: ${this.activeSoundpackIsOwner})`);
+            return result.data;
+        } catch (err) {
+            console.error(`Error loading soundpack:`, err);
+            throw err;
+        }
     }
 
     /**
@@ -278,42 +305,25 @@ class TriggerEngine {
      */
     async loadSoundpack(soundpackId) {
         try {
-            console.log(`📦 Loading soundpack ${soundpackId}...`);
-
-            const response = await fetch(
-                `/soundapi/soundpack/load?soundpack_id=${soundpackId}`,
-                {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'application/json' }
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
+            const response = await fetch(`/soundapi/soundpack/load?soundpack_id=${soundpackId}`);
             const result = await response.json();
 
-            if (!result.success) {
-                throw new Error(result.message);
+            if (result.success) {
+                this.soundpacks.set(soundpackId, result.data.triggers);
+                this.activeSoundpackId = soundpackId;
+                // Ensure this flag is set BEFORE the event is dispatched
+                this.activeSoundpackIsOwner = result.data.is_owner; 
+                
+                window.dispatchEvent(new CustomEvent('soundpackChanged', {
+                    detail: { 
+                        soundpackId: this.activeSoundpackId, 
+                        isOwner: this.activeSoundpackIsOwner 
+                    }
+                }));
+                return result.data;
             }
-
-            // Store soundpack mapping
-            const triggerMap = {};
-            for (const [triggerId, audio] of Object.entries(result.data.triggers)) {
-                triggerMap[triggerId] = audio;
-            }
-
-            this.soundpacks.set(soundpackId, triggerMap);
-            this.activeSoundpackId = soundpackId;
-
-            console.log(`✅ Soundpack loaded: ${result.data.title}`);
-            console.log(`   Configured triggers:`, Object.keys(triggerMap).length);
-
-            return result.data;
         } catch (err) {
-            console.error(`Error loading soundpack:`, err);
-            throw err;
+            console.error('Error loading soundpack:', err);
         }
     }
 
@@ -322,21 +332,31 @@ class TriggerEngine {
      */
     async switchSoundpack(soundpackId) {
         try {
-            if (this.soundpacks.has(soundpackId)) {
-                // Already loaded, just switch
-                this.activeSoundpackId = soundpackId;
-                console.log(`🔄 Switched to soundpack ${soundpackId}`);
-            } else {
-                // Need to load
+            // 1. Fetch if not in memory
+            if (!this.soundpacks.has(soundpackId)) {
                 await this.loadSoundpack(soundpackId);
+            } else {
+                this.activeSoundpackId = soundpackId;
+                // Re-verify ownership from cached metadata if you extend the cache,
+                // otherwise loadSoundpack already sets this.activeSoundpackIsOwner.
             }
 
-            // Emit event for UI updates
+            // 2. Persist selection
+            localStorage.setItem('BAR-active-soundpack-id', soundpackId);
+
+            // 3. Dispatch event
+            // Using a detail object that includes all necessary UI state
             window.dispatchEvent(new CustomEvent('soundpackChanged', {
-                detail: { soundpackId, soundpackTitle: this.soundpacks.get(soundpackId)?.title }
+                detail: { 
+                    soundpackId: this.activeSoundpackId, 
+                    soundpackTitle: this.soundpacks.get(this.activeSoundpackId)?.title,
+                    isOwner: this.activeSoundpackIsOwner 
+                }
             }));
+            
+            console.log(`🔄 Soundpack ${soundpackId} activated (Owner: ${this.activeSoundpackIsOwner})`);
         } catch (err) {
-            console.error(`Error switching soundpack:`, err);
+            console.error('Error switching soundpack:', err);
         }
     }
 
@@ -484,7 +504,17 @@ class TriggerEngine {
 
 // Singleton instance
 const triggerEngine = new TriggerEngine();
-triggerEngine.loadSoundpack(1);
+
+// const savedPackId = localStorage.getItem('BAR-active-soundpack-id') || 1;
+// triggerEngine.loadSoundpack(savedPackId);
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Small delay to ensure triggersManager.js listener is attached
+    setTimeout(() => {
+        const savedPackId = localStorage.getItem('BAR-active-soundpack-id') || 1;
+        triggerEngine.switchSoundpack(parseInt(savedPackId));
+    }, 50); 
+});
 
 // Expose for console debugging
 window.triggerEngine = triggerEngine;

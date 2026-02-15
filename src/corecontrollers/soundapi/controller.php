@@ -295,7 +295,7 @@ class SoundpackController {
 
         // Verify soundpack belongs to user
         $soundpack = DB::fetch(
-            'SELECT id, title FROM controller_soundpacks WHERE id = ? AND (created_by = ? OR is_public = 1)',
+            'SELECT * FROM controller_soundpacks WHERE id = ? AND (created_by = ? OR is_public = 1)',
             [$soundpackId, $this->userId]
         );
 
@@ -318,12 +318,14 @@ class SoundpackController {
                     'url' => self::AUDIO_UPLOAD_DIR . $sound->filename
                 ];
             }
-
+            $isOwner = ($soundpack->created_by == $this->userId);
             $this->success('Soundpack loaded', [
                 'soundpack_id' => $soundpackId,
                 'title' => $soundpack->title,
+                'is_owner' => $isOwner, 
                 'triggers' => $mapping
             ]);
+
         } catch (\Exception $e) {
             $this->error('Database error: ' . $e->getMessage());
         }

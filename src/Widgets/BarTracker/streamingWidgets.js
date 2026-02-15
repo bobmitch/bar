@@ -567,7 +567,7 @@ const streamingWidgets = new StreamingWidgetSystem();
 
 document.addEventListener('DOMContentLoaded', () => {
     streamingWidgets.loadLayout();
-    streamingWidgets.switchToStreamingMode();
+    //streamingWidgets.switchToStreamingMode();
 });
 
 

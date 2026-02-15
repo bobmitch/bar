@@ -18,6 +18,13 @@ class TriggersManager {
         
         this.initializeElements();
         this.attachEventListeners();
+
+        if (window.triggerEngine && triggerEngine.activeSoundpackId) {
+            console.log('🏗️ Bootstrapping TriggersManager with existing engine state');
+            this.activeSoundpackId = triggerEngine.activeSoundpackId;
+            this.renderTriggers();
+        }
+
         this.loadSoundpacks();
     }
 
@@ -130,6 +137,13 @@ class TriggersManager {
         window.addEventListener('soundpackChanged', (e) => {
             this.activeSoundpackId = e.detail.soundpackId;
             this.renderSoundpacks();
+        });
+
+        // ensure trigger list updates when soundpack changes (e.g. after upload or switch)
+        window.addEventListener('soundpackChanged', (e) => {
+            this.activeSoundpackId = e.detail.soundpackId;
+            this.renderSoundpacks();
+            this.renderTriggers(); // This will now correctly populate the panel
         });
     }
 
@@ -306,14 +320,10 @@ class TriggersManager {
         }
 
         const triggers = triggerEngine.getAllTriggers();
-        if (triggers.length === 0) {
-            container.innerHTML = '<p class="empty-state">No triggers registered</p>';
-            return;
-        }
-
         const soundpackMapping = triggerEngine.getActiveSoundpackMapping() || {};
+        const isOwner = triggerEngine.activeSoundpackIsOwner; // Use engine state
 
-        const html = triggers.map(trigger => {
+        container.innerHTML = triggers.map(trigger => {
             const hasAudio = soundpackMapping[trigger.id];
             const isEnabled = trigger.enabled;
 
@@ -340,7 +350,7 @@ class TriggersManager {
                         <div class="audio-status">
                             ${hasAudio ? `
                                 <div class="audio-assigned">
-                                    🎵 Audio: <strong>${this.escapeHtml(soundpackMapping[trigger.id].filename)}</strong>
+                                    🎵 Audio: <strong>${this.escapeHtml(hasAudio.filename)}</strong>
                                 </div>
                             ` : `
                                 <div class="audio-empty">📭 No audio assigned</div>
@@ -348,78 +358,108 @@ class TriggersManager {
                         </div>
 
                         <div class="audio-controls">
-                            <div class="upload-area" data-trigger-id="${trigger.id}">
-                                <label class="upload-label">
-                                    <span>Drag MP3 or click to upload</span>
-                                    <input type="file" class="audio-upload-input" 
-                                           accept=".mp3,audio/mpeg" 
-                                           style="display: none;">
-                                </label>
-                                <div class="upload-progress" style="display: none;"></div>
-                            </div>
-
-                            ${hasAudio ? `
-                                <div class="audio-actions">
-                                    <button class="test-audio bar-btn-small" data-trigger-id="${trigger.id}">🔊 Test</button>
-                                    <button class="remove-audio bar-btn-small" data-trigger-id="${trigger.id}">Remove</button>
+                            ${isOwner ? `
+                                <div class="upload-area" data-trigger-id="${trigger.id}">
+                                    <label class="upload-label">
+                                        <span>Drag MP3 or click to upload</span>
+                                        <input type="file" class="audio-upload-input" 
+                                            accept=".mp3,audio/mpeg" 
+                                            style="display: none;">
+                                    </label>
+                                    <div class="upload-progress" style="display: none;"></div>
                                 </div>
                             ` : ''}
+
+                            <div class="audio-actions">
+                                ${hasAudio ? `<button class="test-audio bar-btn-small" data-trigger-id="${trigger.id}">🔊 Test</button>` : ''}
+                                ${(isOwner && hasAudio) ? `<button class="remove-audio bar-btn-small" data-trigger-id="${trigger.id}">Remove</button>` : ''}
+                            </div>
                         </div>
                     </div>
                 </div>
             `;
         }).join('');
 
-        container.innerHTML = html;
-
-        // Attach event listeners
         this.attachTriggerEventListeners();
     }
 
     /**
      * Attach event listeners to trigger elements
      */
+    // refactored to use delegation for better performance and to avoid re-attaching on every render
     attachTriggerEventListeners() {
-        // Toggle trigger enable/disable
-        document.querySelectorAll('.toggle-trigger').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const triggerId = parseInt(e.currentTarget.dataset.triggerId);
+        const container = document.getElementById('trigger-list');
+        if (!container) return;
+
+        // Remove existing listener if this is called multiple times to avoid duplicates
+        container.onclick = null; 
+
+        container.addEventListener('click', async (e) => {
+            // Find the closest trigger-item to get the ID
+            const triggerItem = e.target.closest('.trigger-item');
+            if (!triggerItem) return;
+            
+            const triggerId = parseInt(triggerItem.dataset.triggerId);
+            const target = e.target;
+
+            // 1. Handle Toggle Enable/Disable
+            if (target.classList.contains('toggle-trigger')) {
                 const wasEnabled = triggerEngine.isTriggerEnabled(triggerId);
                 triggerEngine.setTriggerEnabled(triggerId, !wasEnabled);
-                this.renderTriggers();
-            });
+                this.renderTriggers(); // Re-render to update button state
+            }
+
+            // 2. Handle Test Audio
+            if (target.classList.contains('test-audio')) {
+                await this.testAudio(triggerId);
+            }
+
+            // 3. Handle Remove Audio
+            if (target.classList.contains('remove-audio')) {
+                await this.removeAudio(triggerId);
+            }
+
+            // 4. Handle Click-to-Upload (Triggers hidden file input)
+            if (target.closest('.upload-area')) {
+                // Only trigger if not clicking the actual input (to avoid double-fire)
+                if (target.tagName !== 'INPUT') {
+                    const input = triggerItem.querySelector('.audio-upload-input');
+                    input?.click();
+                }
+            }
         });
 
-        // Upload area drag-drop
-        document.querySelectorAll('.upload-area').forEach(area => {
-            const triggerId = parseInt(area.dataset.triggerId);
-            const input = area.querySelector('.audio-upload-input');
-
-            // Click to upload
-            input?.addEventListener('change', (e) => {
+        // Handle File Input Changes (still needs delegation-style setup per item)
+        container.addEventListener('change', (e) => {
+            if (e.target.classList.contains('audio-upload-input')) {
+                const triggerItem = e.target.closest('.trigger-item');
+                const triggerId = parseInt(triggerItem.dataset.triggerId);
                 if (e.target.files.length > 0) {
                     this.uploadAudio(triggerId, e.target.files[0]);
                 }
-            });
+            }
+        });
 
-            area.querySelector('.upload-label')?.addEventListener('click', () => {
-                input?.click();
-            });
-
-            // Drag and drop
-            area.addEventListener('dragover', (e) => {
+        // Handle Drag & Drop Delegation
+        container.addEventListener('dragover', (e) => {
+            const area = e.target.closest('.upload-area');
+            if (area) {
                 e.preventDefault();
                 area.classList.add('dragover');
-            });
+            }
+        });
 
-            area.addEventListener('dragleave', () => {
-                area.classList.remove('dragover');
-            });
+        container.addEventListener('dragleave', (e) => {
+            const area = e.target.closest('.upload-area');
+            if (area) area.classList.remove('dragover');
+        });
 
-            area.addEventListener('drop', (e) => {
+        container.addEventListener('drop', (e) => {
+            const area = e.target.closest('.upload-area');
+            if (area) {
                 e.preventDefault();
                 area.classList.remove('dragover');
-
+                const triggerId = parseInt(area.dataset.triggerId);
                 const files = e.dataTransfer.files;
                 if (files.length > 0) {
                     const file = files[0];
@@ -429,23 +469,7 @@ class TriggersManager {
                         this.showNotification('Only MP3 files allowed', 'error');
                     }
                 }
-            });
-        });
-
-        // Test audio
-        document.querySelectorAll('.test-audio').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const triggerId = parseInt(e.currentTarget.dataset.triggerId);
-                await this.testAudio(triggerId);
-            });
-        });
-
-        // Remove audio
-        document.querySelectorAll('.remove-audio').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const triggerId = parseInt(e.currentTarget.dataset.triggerId);
-                await this.removeAudio(triggerId);
-            });
+            }
         });
     }
 
