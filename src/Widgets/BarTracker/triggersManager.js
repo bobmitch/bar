@@ -386,111 +386,60 @@ class TriggersManager {
     /**
      * Attach event listeners to trigger elements
      */
-    // refactored to use delegation for better performance and to avoid re-attaching on every render
     attachTriggerEventListeners() {
         const container = document.getElementById('trigger-list');
         if (!container) return;
 
-        // FIX: Check a flag to ensure we only attach this delegation once
-        if (container.dataset.listenerAttached === 'true') return;
-        
+        // --- FIX 1: THE MASTER GUARD ---
+        // If the listener is already there, don't add another one.
+        if (container.dataset.listenerAttached === 'true') {
+            console.log('🛡️ Listener already attached to #trigger-list, skipping...');
+            return;
+        }
 
-        // Remove existing listener if this is called multiple times to avoid duplicates
-        container.onclick = null; 
+        console.log('✅ Attaching unified event listener to #trigger-list');
 
+        // --- FIX 2: TARGETED CLICK HANDLER ---
         container.addEventListener('click', async (e) => {
-
-
-            // Find the closest trigger-item to get the ID
-            const triggerItem = e.target.closest('.trigger-item');
+            const target = e.target;
+            
+            // Find the specific button or the closest button class
+            const testBtn = target.closest('.test-audio');
+            const toggleBtn = target.closest('.toggle-trigger');
+            const removeBtn = target.closest('.remove-audio');
+            
+            const triggerItem = target.closest('.trigger-item');
             if (!triggerItem) return;
             
             const triggerId = parseInt(triggerItem.dataset.triggerId);
-            const target = e.target;
 
-            // Handle Test Audio specifically
-            if (target.classList.contains('test-audio')) {
-                // Prevent event from bubbling or being handled twice if there are nested elements
+            // --- FIX 3: STOP PROPAGATION ---
+            // Once we find a match, stop the event from reaching other potential listeners
+            if (testBtn || toggleBtn || removeBtn) {
                 e.preventDefault();
-                e.stopPropagation();
-                await this.testAudio(triggerId);
+                e.stopImmediatePropagation();
             }
 
-            // 1. Handle Toggle Enable/Disable
-            if (target.classList.contains('toggle-trigger')) {
+            if (testBtn) {
+                console.log(`🎯 SHOULD ONLY SEE THIS ONCE PER CLICK - testing audio for trigger ID: ${triggerId}`);
+                await this.testAudio(triggerId);
+                return;
+            }
+
+            if (toggleBtn) {
                 const wasEnabled = triggerEngine.isTriggerEnabled(triggerId);
                 triggerEngine.setTriggerEnabled(triggerId, !wasEnabled);
-                this.renderTriggers(); // Re-render to update button state
+                this.renderTriggers();
+                return;
             }
 
-            // 2. Handle Test Audio
-            if (target.classList.contains('test-audio')) {
-                console.log("SHOULD ONLY SEE THIS ONCE PER CLICK - testing audio for trigger ID:", triggerId);
-                e.preventDefault();
-                e.stopImmediatePropagation(); // Prevents other listeners from firing
-                await this.testAudio(triggerId);
-                return; // Exit delegation loop
-            }
-
-            // 3. Handle Remove Audio
-            if (target.classList.contains('remove-audio')) {
+            if (removeBtn) {
                 await this.removeAudio(triggerId);
+                return;
             }
+        }, true); // Use Capture Phase (true) to intercept before bubbling happens
 
-            // 4. Handle Click-to-Upload (Triggers hidden file input)
-            if (target.closest('.upload-area')) {
-                // Only trigger if not clicking the actual input (to avoid double-fire)
-                if (target.tagName !== 'INPUT') {
-                    const input = triggerItem.querySelector('.audio-upload-input');
-                    input?.click();
-                }
-            }
-        });
-
-        // Handle File Input Changes (still needs delegation-style setup per item)
-        container.addEventListener('change', (e) => {
-            if (e.target.classList.contains('audio-upload-input')) {
-                const triggerItem = e.target.closest('.trigger-item');
-                const triggerId = parseInt(triggerItem.dataset.triggerId);
-                if (e.target.files.length > 0) {
-                    this.uploadAudio(triggerId, e.target.files[0]);
-                }
-            }
-        });
-
-        // Handle Drag & Drop Delegation
-        container.addEventListener('dragover', (e) => {
-            const area = e.target.closest('.upload-area');
-            if (area) {
-                e.preventDefault();
-                area.classList.add('dragover');
-            }
-        });
-
-        container.addEventListener('dragleave', (e) => {
-            const area = e.target.closest('.upload-area');
-            if (area) area.classList.remove('dragover');
-        });
-
-        container.addEventListener('drop', (e) => {
-            const area = e.target.closest('.upload-area');
-            if (area) {
-                e.preventDefault();
-                area.classList.remove('dragover');
-                const triggerId = parseInt(area.dataset.triggerId);
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    const file = files[0];
-                    if (file.type === 'audio/mpeg' || file.name.endsWith('.mp3')) {
-                        this.uploadAudio(triggerId, file);
-                    } else {
-                        this.showNotification('Only MP3 files allowed', 'error');
-                    }
-                }
-            }
-        },true); // Use capture to ensure this fires before any other handlers
-
-        // Mark as attached
+        // Mark as attached so subsequent calls to this function do nothing
         container.dataset.listenerAttached = 'true';
     }
 
