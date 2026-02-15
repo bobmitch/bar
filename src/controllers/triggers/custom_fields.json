@@ -44,9 +44,9 @@
 			"label": "Actions (JS)",
 			"name": "actions",
 			"id": "actions",
-			"required": true,
+			"required": false,
 			"placeholder":"(event) => console.log('Action for: ',event);",
-			"description":"A CSV of valid JS anonymous functions that are called upon trigger firing. Each function will be called with (event) parameters." 
+			"description":"A CSV of valid JS anonymous functions that are called upon trigger firing. Each function will be called with (event) parameters. Can be empty." 
 		},
 		{
 			"type": "Image",

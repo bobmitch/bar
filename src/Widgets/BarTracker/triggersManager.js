@@ -8,6 +8,12 @@
  * - Enable/disable individual triggers
  * - Switch between soundpacks
  * - Visual feedback for upload status
+ * 
+ * FIXES APPLIED:
+ * ✅ Complete drag-and-drop event handlers with visual feedback
+ * ✅ File input click handler for "click to upload"
+ * ✅ Proper event delegation for dynamically rendered elements
+ * ✅ Console debugging for troubleshooting
  */
 
 class TriggersManager {
@@ -24,8 +30,6 @@ class TriggersManager {
         }
         this.loadSoundpacks();
     }
-
-    
 
     /**
      * INITIALIZATION
@@ -135,86 +139,6 @@ class TriggersManager {
     }
 
     /**
-     * Create new soundpack
-     */
-    async createSoundpack() {
-        const titleInput = document.getElementById('soundpack-title');
-        const title = (titleInput?.value || '').trim();
-
-        if (!title) {
-            this.showNotification('Please enter a soundpack name', 'error');
-            return;
-        }
-
-        try {
-            const formData = new FormData();
-            formData.append('title', title);
-
-            const response = await fetch('/soundapi/soundpack/create', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const result = await response.json();
-            if (result.success) {
-                this.soundpacks.push(result.data);
-                this.renderSoundpacks();
-                this.closeModal();
-                this.showNotification(`Soundpack "${title}" created!`, 'success');
-            } else {
-                this.showNotification(result.message, 'error');
-            }
-        } catch (err) {
-            console.error('Error creating soundpack:', err);
-            this.showNotification('Failed to create soundpack', 'error');
-        }
-    }
-
-    /**
-     * Delete soundpack
-     */
-    async deleteSoundpack(soundpackId) {
-        if (!confirm('Are you sure? All audio files will be deleted.')) return;
-
-        try {
-            const formData = new FormData();
-            formData.append('soundpack_id', soundpackId);
-
-            // would like to use DELETE method, but PHP is a lil' bitch
-            const response = await fetch('/soundapi/soundpack/remove', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const result = await response.json();
-            if (result.success) {
-                this.soundpacks = this.soundpacks.filter(sp => sp.id !== soundpackId);
-                this.renderSoundpacks();
-                this.showNotification('Soundpack deleted', 'success');
-            }
-        } catch (err) {
-            console.error('Error deleting soundpack:', err);
-            this.showNotification('Failed to delete soundpack', 'error');
-        }
-    }
-
-    /**
-     * Switch to soundpack
-     */
-    async switchSoundpack(soundpackId) {
-        // REMOVED: Manual render calls. Let the 'soundpackChanged' event handle it.
-        await triggerEngine.switchSoundpack(soundpackId);
-    }
-
-    /**
-     * RENDERING
-     */
-
-    /**
      * Render soundpack list
      */
     renderSoundpacks() {
@@ -222,7 +146,7 @@ class TriggersManager {
         if (!container) return;
 
         if (this.soundpacks.length === 0) {
-            container.innerHTML = '<p class="empty-state">No soundpacks created yet.</p>';
+            container.innerHTML = '<p class="empty-state">No soundpacks created yet. Create one to get started!</p>';
             return;
         }
 
@@ -232,7 +156,7 @@ class TriggersManager {
                 <div class="soundpack-item ${isActive ? 'active' : ''}">
                     <div class="soundpack-info">
                         <h4>${this.escapeHtml(sp.title)}</h4>
-                        <p class="meta">Created ${this.formatDate(sp.created_at)}</p>
+                        <p class="meta">Created ${this.formatDate(sp.created)}</p>
                     </div>
                     <div class="soundpack-actions">
                         <button class="bar-btn-small activate-soundpack" data-id="${sp.id}">
@@ -258,6 +182,49 @@ class TriggersManager {
                 this.deleteSoundpack(parseInt(btn.dataset.id));
             });
         });
+
+        // Attach modal listeners
+        const createBtn = document.getElementById('create-soundpack-btn');
+        if (createBtn) {
+            createBtn.addEventListener('click', () => this.openModal());
+        }
+
+        const modalCreateBtn = document.getElementById('modal-create-btn');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+        if (modalCreateBtn) {
+            modalCreateBtn.addEventListener('click', () => {
+                this.createSoundpack();
+            });
+        }
+
+        if (modalCancelBtn) {
+            modalCancelBtn.addEventListener('click', () => {
+                this.closeModal();
+            });
+        }
+    }
+
+    /**
+     * Open create soundpack modal
+     */
+    openModal() {
+        const modal = document.getElementById('create-soundpack-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            document.getElementById('soundpack-title').focus();
+        }
+    }
+
+    /**
+     * Close create soundpack modal
+     */
+    closeModal() {
+        const modal = document.getElementById('create-soundpack-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            document.getElementById('soundpack-title').value = '';
+        }
     }
 
     /**
@@ -343,8 +310,7 @@ class TriggersManager {
         const container = document.getElementById('trigger-list');
         if (!container) return;
 
-        // --- FIX 1: THE MASTER GUARD ---
-        // If the listener is already there, don't add another one.
+        // --- GUARD: Prevent multiple listener attachments ---
         if (container.dataset.listenerAttached === 'true') {
             console.log('🛡️ Listener already attached to #trigger-list, skipping...');
             return;
@@ -352,11 +318,10 @@ class TriggersManager {
 
         console.log('✅ Attaching unified event listener to #trigger-list');
 
-        // --- FIX 2: TARGETED CLICK HANDLER ---
+        // --- CLICK HANDLER: Test, Toggle, Remove ---
         container.addEventListener('click', async (e) => {
             const target = e.target;
             
-            // Find the specific button or the closest button class
             const testBtn = target.closest('.test-audio');
             const toggleBtn = target.closest('.toggle-trigger');
             const removeBtn = target.closest('.remove-audio');
@@ -366,15 +331,13 @@ class TriggersManager {
             
             const triggerId = parseInt(triggerItem.dataset.triggerId);
 
-            // --- FIX 3: STOP PROPAGATION ---
-            // Once we find a match, stop the event from reaching other potential listeners
             if (testBtn || toggleBtn || removeBtn) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
             }
 
             if (testBtn) {
-                console.log(`🎯 SHOULD ONLY SEE THIS ONCE PER CLICK - testing audio for trigger ID: ${triggerId}`);
+                console.log(`🔊 Testing audio for trigger ${triggerId}`);
                 await this.testAudio(triggerId);
                 return;
             }
@@ -390,9 +353,97 @@ class TriggersManager {
                 await this.removeAudio(triggerId);
                 return;
             }
-        }, true); // Use Capture Phase (true) to intercept before bubbling happens
+        }, true);
 
-        // Mark as attached so subsequent calls to this function do nothing
+        // --- DRAG & DROP HANDLERS: Visual Feedback + Upload ---
+
+        container.addEventListener('dragenter', (e) => {
+            if (!e.target.closest('.upload-area')) return;
+            
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            
+            const uploadArea = e.target.closest('.upload-area');
+            if (uploadArea) {
+                uploadArea.classList.add('dragover');
+                console.log(`🎯 Dragenter on upload area (trigger ${uploadArea.dataset.triggerId})`);
+            }
+        }, true);
+
+        container.addEventListener('dragover', (e) => {
+            if (!e.target.closest('.upload-area')) return;
+            
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            e.dataTransfer.dropEffect = 'copy';
+        }, true);
+
+        container.addEventListener('dragleave', (e) => {
+            const uploadArea = e.target.closest('.upload-area');
+            if (uploadArea && !uploadArea.contains(e.relatedTarget)) {
+                uploadArea.classList.remove('dragover');
+                console.log(`🎯 Dragleave from upload area (trigger ${uploadArea.dataset.triggerId})`);
+            }
+        }, true);
+
+        container.addEventListener('drop', async (e) => {
+            const uploadArea = e.target.closest('.upload-area');
+            if (!uploadArea) return;
+            
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            uploadArea.classList.remove('dragover');
+            
+            const triggerId = parseInt(uploadArea.dataset.triggerId);
+            const files = e.dataTransfer.files;
+            
+            console.log(`📥 Drop detected on trigger ${triggerId}, ${files.length} file(s)`);
+            
+            if (files.length > 0) {
+                const file = files[0];
+                console.log(`📁 File: ${file.name} (${file.type}, ${file.size} bytes)`);
+                await this.uploadAudio(triggerId, file);
+            }
+        }, true);
+
+        // --- FILE INPUT CLICK HANDLER ---
+        container.addEventListener('click', (e) => {
+            const uploadLabel = e.target.closest('.upload-label');
+            if (!uploadLabel) return;
+            
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            
+            const fileInput = uploadLabel.querySelector('.audio-upload-input');
+            if (fileInput) {
+                console.log('📂 Opening file dialog');
+                fileInput.click();
+            }
+        }, true);
+
+        // --- FILE INPUT CHANGE HANDLER ---
+        container.addEventListener('change', async (e) => {
+            const fileInput = e.target;
+            if (!fileInput.classList.contains('audio-upload-input')) return;
+            
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            
+            if (fileInput.files.length > 0) {
+                const uploadLabel = fileInput.closest('.upload-label');
+                const uploadArea = uploadLabel.closest('.upload-area');
+                const triggerId = parseInt(uploadArea.dataset.triggerId);
+                const file = fileInput.files[0];
+                
+                console.log(`📁 File selected via dialog: ${file.name} (trigger ${triggerId})`);
+                await this.uploadAudio(triggerId, file);
+                
+                // Reset input for reuse
+                fileInput.value = '';
+            }
+        }, true);
+
+        // Mark as attached
         container.dataset.listenerAttached = 'true';
     }
 
@@ -420,20 +471,22 @@ class TriggersManager {
             return;
         }
 
-        const uploadArea = document.querySelector(`[data-trigger-id="${triggerId}"]`);
+        const uploadArea = document.querySelector(`.upload-area[data-trigger-id="${triggerId}"]`);
         const progressDiv = uploadArea?.querySelector('.upload-progress');
 
         try {
             // Show progress
             if (progressDiv) {
                 progressDiv.style.display = 'block';
-                progressDiv.innerHTML = 'Uploading...';
+                progressDiv.innerHTML = '⏳ Uploading...';
             }
 
             const formData = new FormData();
             formData.append('soundpack_id', this.activeSoundpackId);
             formData.append('trigger_id', triggerId);
             formData.append('audio_file', file);
+
+            console.log(`📤 Uploading to /soundapi/soundpack/upload (soundpack: ${this.activeSoundpackId}, trigger: ${triggerId})`);
 
             const response = await fetch('/soundapi/soundpack/upload', {
                 method: 'POST',
@@ -445,10 +498,14 @@ class TriggersManager {
             const result = await response.json();
 
             if (result.success) {
-                this.showNotification(`Audio uploaded for trigger ${triggerId}`, 'success');
-                this.renderTriggers();
+                this.showNotification(`✅ Audio uploaded for trigger ${triggerId}`, 'success');
+                console.log('✅ Upload successful:', result.data);
+                
+                // Update trigger item dynamically instead of full re-render
+                this.updateTriggerAudioUI(triggerId, result.data.filename, true);
             } else {
-                this.showNotification(result.message, 'error');
+                this.showNotification(result.message || 'Upload failed', 'error');
+                console.error('❌ Upload failed:', result.message);
             }
         } catch (err) {
             console.error('Upload error:', err);
@@ -457,8 +514,75 @@ class TriggersManager {
             if (progressDiv) {
                 progressDiv.style.display = 'none';
             }
-            // TODO update gui to reflect new audio assignment without full re-render (currently causes flash and resets scroll position)
         }
+    }
+
+    /**
+     * Update trigger item UI when audio is uploaded
+     * Dynamic DOM update instead of full re-render
+     */
+    updateTriggerAudioUI(triggerId, filename, hasAudio = true) {
+        const triggerItem = document.querySelector(`[data-trigger-id="${triggerId}"]`);
+        if (!triggerItem) return;
+
+        const audioStatusDiv = triggerItem.querySelector('.audio-status');
+        const audioActionsDiv = triggerItem.querySelector('.audio-actions');
+
+        if (audioStatusDiv) {
+            if (hasAudio) {
+                audioStatusDiv.innerHTML = `
+                    <div class="audio-assigned">
+                        🎵 Audio: <strong>${this.escapeHtml(filename)}</strong>
+                    </div>
+                `;
+            } else {
+                audioStatusDiv.innerHTML = `
+                    <div class="audio-empty">📭 No audio assigned</div>
+                `;
+            }
+        }
+
+        // Update action buttons dynamically
+        if (audioActionsDiv) {
+            if (hasAudio) {
+                // Add test and remove buttons if they don't exist
+                if (!audioActionsDiv.querySelector('.test-audio')) {
+                    const testBtn = document.createElement('button');
+                    testBtn.className = 'test-audio bar-btn-small';
+                    testBtn.dataset.triggerId = triggerId;
+                    testBtn.textContent = '🔊 Test';
+                    testBtn.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        await this.testAudio(triggerId);
+                    });
+                    audioActionsDiv.appendChild(testBtn);
+                }
+
+                if (!audioActionsDiv.querySelector('.remove-audio')) {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-audio bar-btn-small';
+                    removeBtn.dataset.triggerId = triggerId;
+                    removeBtn.textContent = 'Remove';
+                    removeBtn.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        await this.removeAudio(triggerId);
+                    });
+                    audioActionsDiv.appendChild(removeBtn);
+                }
+            } else {
+                // Remove test and remove buttons if they exist
+                const testBtn = audioActionsDiv.querySelector('.test-audio');
+                const removeBtn = audioActionsDiv.querySelector('.remove-audio');
+                if (testBtn) testBtn.remove();
+                if (removeBtn) removeBtn.remove();
+            }
+        }
+
+        // Visual feedback
+        triggerItem.classList.add('audio-updated');
+        setTimeout(() => triggerItem.classList.remove('audio-updated'), 600);
     }
 
     /**
@@ -471,6 +595,7 @@ class TriggersManager {
             const formData = new FormData();
             formData.append('soundpack_id', this.activeSoundpackId);
             formData.append('trigger_id', triggerId);
+            
             const response = await fetch('/soundapi/soundpack/test-audio', {
                 method: 'POST',
                 body: formData
@@ -481,7 +606,6 @@ class TriggersManager {
             const result = await response.json();
 
             if (result.success) {
-                // Play the audio
                 const audio = new Audio(result.data.url);
                 const masterVolume = document.getElementById('master-volume')?.value || 80;
                 audio.volume = Math.min(1, (masterVolume / 100) * 0.8);
@@ -518,8 +642,10 @@ class TriggersManager {
             const result = await response.json();
 
             if (result.success) {
-                this.showNotification('Audio removed', 'success');
-                this.renderTriggers();
+                this.showNotification('✅ Audio removed', 'success');
+                
+                // Update trigger item dynamically
+                this.updateTriggerAudioUI(triggerId, null, false);
             } else {
                 this.showNotification(result.message, 'error');
             }
@@ -530,29 +656,99 @@ class TriggersManager {
     }
 
     /**
-     * MODALS & NOTIFICATIONS
+     * Create new soundpack
      */
+    async createSoundpack() {
+        const titleInput = document.getElementById('soundpack-title');
+        const title = (titleInput?.value || '').trim();
 
-    showCreateSoundpackModal() {
-        const modal = document.getElementById('create-soundpack-modal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            document.getElementById('soundpack-title')?.focus();
+        if (!title) {
+            this.showNotification('Please enter a soundpack name', 'error');
+            return;
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('title', title);
+
+            const response = await fetch('/soundapi/soundpack/create', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const result = await response.json();
+            if (result.success) {
+                this.soundpacks.push(result.data);
+                this.renderSoundpacks();
+                this.closeModal();
+                this.showNotification(`Soundpack "${title}" created!`, 'success');
+            } else {
+                this.showNotification(result.message, 'error');
+            }
+        } catch (err) {
+            console.error('Error creating soundpack:', err);
+            this.showNotification('Failed to create soundpack', 'error');
         }
     }
 
-    closeModal() {
-        const modal = document.getElementById('create-soundpack-modal');
-        if (modal) {
-            modal.classList.add('hidden');
-            document.getElementById('soundpack-title').value = '';
+    /**
+     * Delete soundpack
+     */
+    async deleteSoundpack(soundpackId) {
+        if (!confirm('Are you sure? All audio files will be deleted.')) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('soundpack_id', soundpackId);
+
+            const response = await fetch('/soundapi/soundpack/remove', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const result = await response.json();
+            if (result.success) {
+                this.soundpacks = this.soundpacks.filter(sp => sp.id !== soundpackId);
+                this.renderSoundpacks();
+                this.showNotification('Soundpack deleted', 'success');
+            }
+        } catch (err) {
+            console.error('Error deleting soundpack:', err);
+            this.showNotification('Failed to delete soundpack', 'error');
         }
     }
+
+    /**
+     * Switch to soundpack
+     */
+    async switchSoundpack(soundpackId) {
+        try {
+            console.log(`🔄 Switching to soundpack ${soundpackId}...`);
+            
+            // Use triggerEngine's built-in switchSoundpack method
+            // This handles loading and event dispatch automatically
+            await triggerEngine.switchSoundpack(soundpackId);
+            
+            // Update local state
+            this.activeSoundpackId = soundpackId;
+            
+            console.log(`✅ Switched to soundpack ${soundpackId}`);
+        } catch (err) {
+            console.error('Error switching soundpack:', err);
+            this.showNotification('Failed to switch soundpack', 'error');
+        }
+    }
+
+    /**
+     * UI FEEDBACK
+     */
 
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
         notification.style.cssText = `
             position: fixed;
             bottom: 20px;
@@ -566,6 +762,7 @@ class TriggersManager {
             animation: slideIn 0.3s ease;
         `;
 
+        notification.textContent = message;
         document.body.appendChild(notification);
         setTimeout(() => notification.remove(), 3000);
     }

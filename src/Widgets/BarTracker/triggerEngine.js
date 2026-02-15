@@ -109,7 +109,7 @@ class TriggerEngine {
      * Evaluate all active triggers against an event
      * Returns array of fired trigger IDs
      */
-    evaluateTriggers(eventData) {
+    evaluateAllTriggers(eventData) {
         const firedTriggers = [];
 
         for (const [triggerId, trigger] of this.triggers) {

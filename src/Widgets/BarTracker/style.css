@@ -411,6 +411,9 @@ body.bar-enabled {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(30rem, 1fr));
+    gap: 16px; 
 }
 
 .trigger-item {
@@ -548,6 +551,19 @@ body.bar-enabled {
 .audio-actions .bar-btn-small {
     flex: 1;
     text-align: center;
+}
+
+.upload-area.dragover {
+    border-color: var(--accent-primary) !important;
+    background: rgba(0, 217, 255, 0.25) !important;
+    transform: scale(1.02);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
+}
+
+/* Active state while uploading */
+.upload-area.uploading {
+    opacity: 0.6;
+    pointer-events: none;
 }
 
 /* ========== MODALS ========== */
@@ -829,3 +845,22 @@ body.bar-enabled {
 h5, p {
     color:white;
 }
+
+/* Visual feedback when audio is updated (upload or removal) */
+.trigger-item.audio-updated {
+    animation: audioUpdatePulse 0.6s ease;
+}
+
+@keyframes audioUpdatePulse {
+    0% {
+        background: rgba(0, 217, 255, 0);
+    }
+    50% {
+        background: rgba(0, 217, 255, 0.15);
+    }
+    100% {
+        background: rgba(0, 217, 255, 0);
+    }
+}
+
+
