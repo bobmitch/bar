@@ -134,6 +134,12 @@ class EventHandler {
             case 'AllUnits':
                 this.handleUpdateAllUnits(data);
                 break;
+            case 'GameStart':
+                // re-initialize game context on GameStart event (in case it wasn't set during connection)
+                console.log('🎮 GameStart event received, initializing game context');
+                // TODO: handle future JS trigger local variable reset on new game start
+                this.initializeGame(data);
+                break;
         }
     }
 
