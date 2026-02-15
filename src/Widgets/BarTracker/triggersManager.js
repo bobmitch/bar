@@ -391,16 +391,30 @@ class TriggersManager {
         const container = document.getElementById('trigger-list');
         if (!container) return;
 
+        // FIX: Check a flag to ensure we only attach this delegation once
+        if (container.dataset.listenerAttached === 'true') return;
+        
+
         // Remove existing listener if this is called multiple times to avoid duplicates
         container.onclick = null; 
 
         container.addEventListener('click', async (e) => {
+
+
             // Find the closest trigger-item to get the ID
             const triggerItem = e.target.closest('.trigger-item');
             if (!triggerItem) return;
             
             const triggerId = parseInt(triggerItem.dataset.triggerId);
             const target = e.target;
+
+            // Handle Test Audio specifically
+            if (target.classList.contains('test-audio')) {
+                // Prevent event from bubbling or being handled twice if there are nested elements
+                e.preventDefault();
+                e.stopPropagation();
+                await this.testAudio(triggerId);
+            }
 
             // 1. Handle Toggle Enable/Disable
             if (target.classList.contains('toggle-trigger')) {
@@ -411,7 +425,11 @@ class TriggersManager {
 
             // 2. Handle Test Audio
             if (target.classList.contains('test-audio')) {
+                console.log("SHOULD ONLY SEE THIS ONCE PER CLICK - testing audio for trigger ID:", triggerId);
+                e.preventDefault();
+                e.stopImmediatePropagation(); // Prevents other listeners from firing
                 await this.testAudio(triggerId);
+                return; // Exit delegation loop
             }
 
             // 3. Handle Remove Audio
@@ -470,7 +488,10 @@ class TriggersManager {
                     }
                 }
             }
-        });
+        },true); // Use capture to ensure this fires before any other handlers
+
+        // Mark as attached
+        container.dataset.listenerAttached = 'true';
     }
 
     /**
