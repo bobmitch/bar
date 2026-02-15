@@ -14,17 +14,14 @@ class TriggersManager {
     constructor() {
         this.soundpacks = [];
         this.activeSoundpackId = null;
-        this.uploadProgress = new Map(); // Track upload progress per trigger
-        
         this.initializeElements();
         this.attachEventListeners();
 
+        // Only bootstrap if the engine is ready and we aren't already rendering
         if (window.triggerEngine && triggerEngine.activeSoundpackId) {
-            console.log('🏗️ Bootstrapping TriggersManager with existing engine state');
             this.activeSoundpackId = triggerEngine.activeSoundpackId;
             this.renderTriggers();
         }
-
         this.loadSoundpacks();
     }
 
@@ -93,58 +90,21 @@ class TriggersManager {
      */
 
     attachEventListeners() {
+        // GUARD: Ensure window listeners are only added ONCE per page session
+        if (window.triggersManagerListenersAttached) return;
 
-        // Wait for DOM to be ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                this.attachEventListeners();
-            });
-            return;
-        }
-
-        // Only proceed if triggers view exists
-        if (!this.triggersPanel) {
-            console.warn('Triggers panel not found - deferring initialization');
-            setTimeout(() => this.attachEventListeners(), 1000);
-            return;
-        }
-        
-        // Create soundpack
-        document.getElementById('create-soundpack-btn')?.addEventListener('click', () => {
-            this.showCreateSoundpackModal();
-        });
-
-        document.getElementById('modal-create-btn')?.addEventListener('click', () => {
-            this.createSoundpack();
-        });
-
-        document.getElementById('modal-cancel-btn')?.addEventListener('click', () => {
-            this.closeModal();
-        });
-
-        document.getElementById('soundpack-title')?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.createSoundpack();
-            }
-        });
-
-        // Listen for trigger fired events
         window.addEventListener('triggerFired', (e) => {
             this.highlightFiredTrigger(e.detail.triggerId);
         });
 
-        // Listen for soundpack changes
+        // CONSOLIDATED: Single listener for soundpack changes
         window.addEventListener('soundpackChanged', (e) => {
             this.activeSoundpackId = e.detail.soundpackId;
             this.renderSoundpacks();
+            this.renderTriggers(); 
         });
 
-        // ensure trigger list updates when soundpack changes (e.g. after upload or switch)
-        window.addEventListener('soundpackChanged', (e) => {
-            this.activeSoundpackId = e.detail.soundpackId;
-            this.renderSoundpacks();
-            this.renderTriggers(); // This will now correctly populate the panel
-        });
+        window.triggersManagerListenersAttached = true;
     }
 
     /**
@@ -246,15 +206,8 @@ class TriggersManager {
      * Switch to soundpack
      */
     async switchSoundpack(soundpackId) {
-        try {
-            await triggerEngine.switchSoundpack(soundpackId);
-            this.activeSoundpackId = soundpackId;
-            this.renderTriggers();
-            this.renderSoundpacks();
-        } catch (err) {
-            console.error('Error switching soundpack:', err);
-            this.showNotification('Failed to switch soundpack', 'error');
-        }
+        // REMOVED: Manual render calls. Let the 'soundpackChanged' event handle it.
+        await triggerEngine.switchSoundpack(soundpackId);
     }
 
     /**
