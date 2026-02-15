@@ -70,26 +70,7 @@ class BarTracker extends Widget {
 								<h3>📈 TEAM STATUS</h3>
 							</div>
 							<div id="status" class="status-content">
-								<div class="stat-row">
-									<span class="stat-label">State:</span>
-									<span class="stat-value">INITIALIZING...</span>
-								</div>
-								<div class="stat-row">
-									<span class="stat-label">Units:</span>
-									<span class="stat-value">0</span>
-								</div>
-								<div class="stat-row">
-									<span class="stat-label">Energy:</span>
-									<span class="stat-value">0 / 0</span>
-								</div>
-								<div class="stat-row">
-									<span class="stat-label">Metal:</span>
-									<span class="stat-value">0 / 0</span>
-								</div>
-								<div class="stat-row">
-									<span class="stat-label">Paused:</span>
-									<span class="stat-value">No</span>
-								</div>
+								<p>Loading team status...</p>
 							</div>
 
 							<!-- UUID Display -->

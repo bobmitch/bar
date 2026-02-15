@@ -1,47 +1,262 @@
 /**
- * UIManager - Handles all UI updates and interactions
+ * UI Manager - Handles all visual updates and DOM manipulation
+ * ENHANCED: Includes full event listener initialization and view management
  */
 
 class UIManager {
     constructor() {
         this.currentView = 'standard';
-        this.eventLogLimit = 50;
-        this.unitSortBy = 'damage';
+        this.eventLogLimit = 100;
+        this.statsUpdateInterval = 500; // ms between stats panel updates
+        this.lastStatsUpdate = 0;
         this.unitFilterText = '';
+        this.unitSortBy = 'name';
         
-        this.initializeEventListeners();
-        //this.initializeTriggerList(); // commented out for now - let triggersManager handle it.
+        // Team stats cache for display
+        this.displayStats = {
+            unitCount: 0,
+            totalMetalCost: 0,
+            damageDealt: 0,
+            damageTaken: 0,
+            unitsKilled: 0,
+            unitsLost: 0,
+            metalIncome: 0,
+            metalUsage: 0,
+            energyIncome: 0,
+            energyUsage: 0,
+            metalCurrent: 0,
+            metalStorage: 0,
+            energyCurrent: 0,
+            energyStorage: 0,
+            isPaused: false,
+            overflow_m: false,
+            overflow_e: false
+        };
     }
 
     /**
-     * VIEW MANAGEMENT
+     * INITIALIZATION - Called on page load
      */
 
-    switchView(viewName) {
+    initialize() {
+        console.log('📊 Initializing UIManager...');
+        this.initializeEventListeners();
+    }
 
-        console.log('Switching to view:', viewName);
+    /**
+     * EVENT LISTENERS INITIALIZATION - Sets up all UI interactions
+     */
 
-        if (this.currentView === viewName) return;
+    initializeEventListeners() {
+        console.log('🎯 Setting up event listeners...');
 
-        // Hide all views
-        document.querySelectorAll('.view-section').forEach(section => {
-            section.classList.remove('active');
-        });
-
-        // Remove active state from all tabs
+        // Tab switching - CRITICAL FOR NAVIGATION
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.remove('active');
+            btn.addEventListener('click', () => {
+                const tabName = btn.dataset.tab;
+                console.log('📌 Tab clicked:', tabName);
+                this.switchView(tabName);
+            });
         });
 
-        // Show selected view
-        document.getElementById(`${viewName}-view`).classList.add('active');
-        document.querySelector(`[data-tab="${viewName}"]`).classList.add('active');
+        // Event log clear button
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        if (clearLogBtn) {
+            clearLogBtn.addEventListener('click', () => {
+                console.log('🗑️ Clearing event log...');
+                this.clearEventLog();
+            });
+        }
 
-        this.currentView = viewName;
+        // Unit roster sort (if available)
+        const sortSelect = document.getElementById('unit-sort');
+        if (sortSelect) {
+            sortSelect.addEventListener('change', (e) => {
+                this.unitSortBy = e.target.value;
+                this.updateUnitRosterSort();
+            });
+        }
 
-        // Initialize view-specific content
-        if (viewName === 'streaming') {
-            this.initializeStreamingMode();
+        // Unit filter input (if available)
+        const filterInput = document.getElementById('unit-filter');
+        if (filterInput) {
+            filterInput.addEventListener('input', (e) => {
+                this.unitFilterText = e.target.value.toLowerCase();
+                this.updateUnitRosterFilter();
+            });
+        }
+
+        // Streaming mode listeners (if available)
+        this.initializeStreamingModeListeners();
+
+        console.log('✅ Event listeners initialized');
+    }
+
+    /**
+     * STATS PANEL UPDATES - The core fix for team status
+     */
+
+    updateTeamStatsPanel(teamData, fullStatsData) {
+        const statusDiv = document.getElementById('status');
+        if (!statusDiv) {
+            console.warn('⚠️ Status div not found for panel update');
+            return;
+        }
+
+        // Extract values with fallbacks
+        const unitCount = teamData?.unitCount || 0;
+        const totalMetalCost = teamData?.totalMetalCost || 0;
+        const damageDealt = fullStatsData?.combat?.damage_dealt || 0;
+        const damageTaken = fullStatsData?.combat?.damage_received || 0;
+        const unitsKilled = fullStatsData?.combat?.units_killed || 0;
+        const unitsLost = fullStatsData?.combat?.units_died || 0;
+        
+        // Metal stats
+        const metalIncome = fullStatsData?.metal?.income || 0;
+        const metalUsage = fullStatsData?.metal?.usage || 0;
+        const metalCurrent = fullStatsData?.metal?.storage || 0;
+        const metalStorage = fullStatsData?.metal?.max_storage || fullStatsData?.metal?.storage || 0;
+        
+        // Energy stats
+        const energyIncome = fullStatsData?.energy?.income || 0;
+        const energyUsage = fullStatsData?.energy?.usage || 0;
+        const energyCurrent = fullStatsData?.energy?.storage || 0;
+        const energyStorage = fullStatsData?.energy?.max_storage || fullStatsData?.energy?.storage || 0;
+
+        // Calculate K/D ratio
+        const kdRatio = damageTaken > 0 ? (damageDealt / damageTaken).toFixed(2) : damageDealt > 0 ? '∞' : '0.0';
+
+        // Update cache for reference
+        Object.assign(this.displayStats, {
+            unitCount,
+            totalMetalCost,
+            damageDealt: Math.round(damageDealt),
+            damageTaken: Math.round(damageTaken),
+            unitsKilled,
+            unitsLost,
+            metalIncome: metalIncome.toFixed(1),
+            metalUsage: metalUsage.toFixed(1),
+            energyIncome: energyIncome.toFixed(1),
+            energyUsage: energyUsage.toFixed(1),
+            metalCurrent: Math.round(metalCurrent),
+            metalStorage: Math.round(metalStorage),
+            energyCurrent: Math.round(energyCurrent),
+            energyStorage: Math.round(energyStorage),
+            kdRatio
+        });
+
+        // Build HTML for status panel
+        statusDiv.innerHTML = `
+            <div class="stat-section">
+                <div class="stat-title">ARMY</div>
+                <div class="stat-row">
+                    <span class="stat-label">Active Units:</span>
+                    <span class="stat-value">${unitCount}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Army Value:</span>
+                    <span class="stat-value">${this.formatNumber(totalMetalCost)}M</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Killed:</span>
+                    <span class="stat-value stat-positive">${unitsKilled}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Lost:</span>
+                    <span class="stat-value stat-negative">${unitsLost}</span>
+                </div>
+            </div>
+
+            <div class="stat-section">
+                <div class="stat-title">COMBAT</div>
+                <div class="stat-row">
+                    <span class="stat-label">Damage Dealt:</span>
+                    <span class="stat-value stat-positive">${this.formatNumber(damageDealt)}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Damage Taken:</span>
+                    <span class="stat-value stat-negative">${this.formatNumber(damageTaken)}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">K/D Ratio:</span>
+                    <span class="stat-value">${kdRatio}</span>
+                </div>
+            </div>
+
+            <div class="stat-section">
+                <div class="stat-title">METAL</div>
+                <div class="stat-row">
+                    <span class="stat-label">Income:</span>
+                    <span class="stat-value">${metalIncome.toFixed(1)}/s</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Usage:</span>
+                    <span class="stat-value">${metalUsage.toFixed(1)}/s</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Storage:</span>
+                    <span class="stat-value">${this.formatNumber(metalCurrent)} / ${this.formatNumber(metalStorage)}</span>
+                </div>
+                <div class="stat-row ${fullStatsData?.overflow_m ? 'overflow-active' : ''}">
+                    <span class="stat-label">Status:</span>
+                    <span class="stat-value">${fullStatsData?.overflow_m ? '🔴 OVERFLOW' : '✓ Normal'}</span>
+                </div>
+            </div>
+
+            <div class="stat-section">
+                <div class="stat-title">ENERGY</div>
+                <div class="stat-row">
+                    <span class="stat-label">Income:</span>
+                    <span class="stat-value">${energyIncome.toFixed(1)}/s</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Usage:</span>
+                    <span class="stat-value">${energyUsage.toFixed(1)}/s</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Storage:</span>
+                    <span class="stat-value">${this.formatNumber(energyCurrent)} / ${this.formatNumber(energyStorage)}</span>
+                </div>
+                <div class="stat-row ${fullStatsData?.overflow_e ? 'overflow-active' : ''}">
+                    <span class="stat-label">Status:</span>
+                    <span class="stat-value">${fullStatsData?.overflow_e ? '🔴 STALLED' : '✓ Flowing'}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * UPDATE GAME STATUS (for header display)
+     */
+
+    updateGameStatus(gameTime, gameState) {
+        const minutes = Math.floor(gameTime / 60);
+        const seconds = Math.floor(gameTime % 60);
+        const gameTimeEl = document.getElementById('game-time');
+        if (gameTimeEl) {
+            gameTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+    }
+
+    /**
+     * CONNECTION STATUS - CRITICAL FOR SHOWING ONLINE/OFFLINE
+     */
+
+    setConnectionStatus(connected) {
+        const statusEl = document.getElementById('connection-status');
+        if (!statusEl) {
+            console.warn('⚠️ Connection status element not found');
+            return;
+        }
+
+        if (connected) {
+            statusEl.textContent = '🟢 CONNECTED';
+            statusEl.className = 'status-badge connected';
+            console.log('✅ Connection status: CONNECTED');
+        } else {
+            statusEl.textContent = '🔴 OFFLINE';
+            statusEl.className = 'status-badge disconnected';
+            console.log('❌ Connection status: OFFLINE');
         }
     }
 
@@ -59,33 +274,32 @@ class UIManager {
                 logArea.innerHTML = '';
             }
 
-            // Create event item
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
             
             const timestamp = this.formatTime(Date.now());
-            // Handle both event.data.event and event.event structures
             const eventType = event.data?.event || event.event;
             const eventData = event.data?.data || event.data;
             const myTeamID = gameState.gameState.myTeamID;
             
             let details = '';
+            let priority = 'normal';
+
             if (eventType === 'UnitFinished') {
                 const unitName = eventData?.unitName || 'unknown';
-                details = `<span class="event-details">✓ ${getName(unitName)} completed</span>`;
+                const relation = eventData?.relation || 'unknown';
+                const isMyUnit = relation === 'self';
+                const icon = isMyUnit ? '✅' : '🔧';
+                details = `<span class="event-details">${icon} ${this.getName(unitName)} completed</span>`;
+                priority = isMyUnit ? 'high' : 'normal';
             } else if (eventType === 'UnitDamaged') {
-                const damage = eventData?.damage || 0;
+                const damage = Math.round(eventData?.damage || 0);
                 const unitID = eventData?.unitID;
-                // lookup from gameState, we don't send with dmg event, should be present in gameState already, and this way we can get the most up to date name in case it changed since the event was sent
-                const unitName = gameState.units.get(unitID)?.unitName || 'unknown';
-                const unitNameReadable = units.units.names[unitName] || unitName || 'unknown';
-                //const unitName = eventData?.unitName || 'unknown';
-                const unitTeam = eventData?.unitTeam;
-                const isIncoming = true; // always incoming
-                const damageColor = isIncoming ? '#ff6b35' : '#00d084';
-                const damageLabel = isIncoming ? '🔴 INCOMING' : '🟢 OUTGOING';
+                const unit = gameState.units.get(unitID);
+                const unitName = unit?.unitName || 'unknown';
+                const damageColor = '#ff6b35';
                 details = `<span class="event-details" style="color: ${damageColor}; font-weight: 600;">
-                    ${damageLabel} ${Math.round(damage)} dmg to ${getName(unitNameReadable)}
+                    🔴 ${this.getName(unitName)} took ${damage} dmg
                 </span>`;
             } else if (eventType === 'UnitDestroyed') {
                 const unitName = eventData?.unitName || 'unknown';
@@ -95,15 +309,18 @@ class UIManager {
                 const destroyColor = isMyUnit ? '#ff4444' : '#00d084';
                 const destroyLabel = isMyUnit ? '💀 LOSS' : '⚔️ KILL';
                 details = `<span class="event-details" style="color: ${destroyColor}; font-weight: 600;">
-                    ${destroyLabel}: ${getName(unitName)} by ${getName(attackerName)}
+                    ${destroyLabel}: ${this.getName(unitName)} by ${this.getName(attackerName)}
                 </span>`;
+                priority = 'critical';
             } else if (eventType === 'FullStatsUpdate') {
                 const combat = eventData?.combat;
                 if (combat) {
-                    details = `<span class="event-details">K: ${combat.units_killed} | D: ${combat.units_died} | Dmg: ${Math.round(combat.damage_dealt)}</span>`;
+                    details = `<span class="event-details">📊 K: ${combat.units_killed} | D: ${combat.units_died} | Dmg: ${Math.round(combat.damage_dealt)}</span>`;
                 }
+                priority = 'low';
             }
 
+            eventItem.className = `event-item event-priority-${priority}`;
             eventItem.innerHTML = `
                 <div class="event-timestamp">${timestamp}</div>
                 <div class="event-type">${eventType}</div>
@@ -123,269 +340,64 @@ class UIManager {
 
     clearEventLog() {
         const logArea = document.getElementById('event-log');
-        logArea.innerHTML = '<div class="event-empty">Waiting for events...</div>';
+        if (logArea) {
+            logArea.innerHTML = '<div class="event-empty">Waiting for events...</div>';
+        }
     }
 
     /**
-     * STATS UPDATES
+     * VIEW MANAGEMENT - CRITICAL FOR PANEL NAVIGATION
      */
 
-    updateGameStatus(gameTime, gameState) {
-        const minutes = Math.floor(gameTime / 60);
-        const seconds = Math.floor(gameTime % 60);
-        document.getElementById('game-time').textContent = 
-            `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    }
+    switchView(viewName) {
+        console.log('📌 Switching to view:', viewName);
 
-    updateTeamStats(teamData, combatData) {
-        // todo: we can probably split this into separate updates for different sections of the UI, but for now we will just update it all at once when we get the data, which is on every UnitDamaged event currently, so it should be fairly responsive for now
-        return false; // early exit to disable for now, we will re-enable when we have the data and can format it nicely
-        document.getElementById('unit-count').textContent = teamData.unitCount || 0;
-        document.getElementById('army-cost').textContent = 
-            this.formatNumber(teamData.totalMetalCost || 0) + 'M';
-        document.getElementById('damage-dealt').textContent = 
-            this.formatNumber(combatData.damage_dealt || 0);
-        document.getElementById('damage-taken').textContent = 
-            this.formatNumber(combatData.damage_received || 0);
-        
-        const ratio = (combatData.damage_dealt || 0) / (combatData.damage_received || 1);
-        document.getElementById('kd-ratio').textContent = ratio.toFixed(1);
-    }
+        if (this.currentView === viewName) {
+            console.log('   Already on this view, skipping...');
+            return;
+        }
 
-    updateResourceStats(metalStats, energyStats) {
-        return true; // early exit to disable for now, we will re-enable when we have the data and can format it nicely
-        // Metal
-        document.getElementById('metal-income').textContent = 
-            this.formatNumber(metalStats.income || 0, 1) + '/s';
-        document.getElementById('metal-usage').textContent = 
-            this.formatNumber(metalStats.usage || 0, 1) + '/s';
-        document.getElementById('metal-storage').textContent = 
-            `${this.formatNumber(metalStats.storage || 0)}`;
+        // Hide all views
+        document.querySelectorAll('.view-section').forEach(section => {
+            section.classList.remove('active');
+        });
 
-        // Energy
-        document.getElementById('energy-income').textContent = 
-            this.formatNumber(energyStats.income || 0, 1) + '/s';
-        document.getElementById('energy-usage').textContent = 
-            this.formatNumber(energyStats.usage || 0, 1) + '/s';
-        document.getElementById('energy-storage').textContent = 
-            `${this.formatNumber(energyStats.storage || 0)}`;
-    }
-
-
-    /**
-     * TRIGGER CONFIGURATION UI
-     */
-
-    initializeTriggerList() {
-    const container = document.getElementById('trigger-list');
-    if (!container) return;
-
-    const triggers = triggerEngine.getAllTriggers();
-    
-    if (triggers.length === 0) {
-        container.innerHTML = '<p class="empty-state">No triggers registered</p>';
-        return;
-    }
-
-    const html = triggers.map(trigger => {
-        // Get state from triggerEngine's internal state tracking
-        const state = triggerEngine.triggerStates?.get(trigger.id) || {
-            lastFired: null,
-            fireCount: 0,
-            enabled: true
-        };
-
-        return `
-            <div class="trigger-item" data-trigger-id="${trigger.id}">
-                <div class="trigger-header">
-                    <h5>${trigger.name}</h5>
-                    <p class="description">${trigger.description || ''}</p>
-                </div>
-                <div class="trigger-stats">
-                    <span>Fired: ${state.fireCount}</span>
-                    <span>Last: ${state.lastFired ? new Date(state.lastFired).toLocaleTimeString() : 'Never'}</span>
-                    <span>${state.enabled ? '✓ Enabled' : '✗ Disabled'}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    container.innerHTML = html;
-}
-
-    updateTriggerFiredState(triggerId) {
-        const triggerItem = document.getElementById(`trigger-${triggerId}`);
-        if (!triggerItem) return;
-
-        const trigger = triggerEngine.getTriggerConfig(triggerId);
-        const lastFired = new Date(trigger.lastFired).toLocaleTimeString();
-
-        triggerItem.querySelector('[data-last-fired]').textContent = lastFired;
-        triggerItem.querySelector('[data-fire-count]').textContent = trigger.fireCount;
-
-        // Add animation
-        triggerItem.classList.add('triggering');
-        setTimeout(() => triggerItem.classList.remove('triggering'), 600);
-    }
-
-    /**
-     * EVENT LISTENERS INITIALIZATION
-     */
-
-    initializeEventListeners() {
-        // Tab switching
+        // Remove active state from all tabs
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.switchView(btn.dataset.tab);
-            });
+            btn.classList.remove('active');
         });
 
-        // Event log clear
-        const clearBtn = document.getElementById('clear-log');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => this.clearEventLog());
+        // Show selected view
+        const targetView = document.getElementById(`${viewName}-view`);
+        if (targetView) {
+            targetView.classList.add('active');
+            console.log(`✅ Activated view: ${viewName}-view`);
+        } else {
+            console.warn(`⚠️ View not found: ${viewName}-view`);
+        }
+        
+        const targetTab = document.querySelector(`[data-tab="${viewName}"]`);
+        if (targetTab) {
+            targetTab.classList.add('active');
+            console.log(`✅ Activated tab: ${viewName}`);
+        } else {
+            console.warn(`⚠️ Tab not found: [data-tab="${viewName}"]`);
         }
 
-        // Unit roster sort
-        const sortSelect = document.getElementById('unit-sort');
-        if (sortSelect) {
-            sortSelect.addEventListener('change', (e) => {
-                this.unitSortBy = e.target.value;
-                this.updateUnitRosterSort();
-            });
-        }
+        this.currentView = viewName;
 
-        // Unit filter
-        const unitFilter = document.getElementById('unit-filter');
-        if (unitFilter) {
-            unitFilter.addEventListener('input', (e) => {
-                this.unitFilterText = e.target.value.toLowerCase();
-                this.updateUnitRosterFilter();
-            });
-        }
-
-        // Settings controls
-        this.initializeSettingsListeners();
-
-        // Streaming mode
-        this.initializeStreamingModeListeners();
-    }
-
-    initializeSettingsListeners() {
-        // Master volume
-        const volumeSlider = document.getElementById('master-volume');
-        if (volumeSlider) {
-            volumeSlider.addEventListener('input', (e) => {
-                document.getElementById('master-volume-value').textContent = e.target.value + '%';
-                audioManager.setMasterVolume(e.target.value / 100);
-            });
-        }
-
-        // Enable/disable all triggers
-        const enableAll = document.getElementById('enable-all-triggers');
-        const disableAll = document.getElementById('disable-all-triggers');
-
-        if (enableAll) {
-            enableAll.addEventListener('click', () => {
-                triggerEngine.triggers.forEach((trigger, id) => {
-                    triggerEngine.setTriggerEnabled(id, true);
-                });
-                this.initializeTriggerList();
-            });
-        }
-
-        if (disableAll) {
-            disableAll.addEventListener('click', () => {
-                triggerEngine.triggers.forEach((trigger, id) => {
-                    triggerEngine.setTriggerEnabled(id, false);
-                });
-                this.initializeTriggerList();
-            });
-        }
-
-        // Export/Import
-        const exportBtn = document.getElementById('export-settings');
-        const importBtn = document.getElementById('import-settings');
-
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => {
-                const settings = triggerEngine.exportSettings();
-                const dataStr = JSON.stringify(settings, null, 2);
-                const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-                const exportFileDefaultName = 'BAR-triggers-config.json';
-                
-                const linkElement = document.createElement('a');
-                linkElement.setAttribute('href', dataUri);
-                linkElement.setAttribute('download', exportFileDefaultName);
-                linkElement.click();
-            });
-        }
-
-        if (importBtn) {
-            importBtn.addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.addEventListener('change', (e) => {
-                    const file = e.target.files[0];
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        try {
-                            const settings = JSON.parse(event.target.result);
-                            triggerEngine.importSettings(settings);
-                            this.initializeTriggerList();
-                            alert('Settings imported successfully!');
-                        } catch (err) {
-                            alert('Error importing settings: ' + err.message);
-                        }
-                    };
-                    reader.readAsText(file);
-                });
-                input.click();
-            });
+        // Initialize view-specific content
+        if (viewName === 'streaming') {
+            this.initializeStreamingMode();
         }
     }
 
-    initializeStreamingModeListeners() {
-        const editModeToggle = document.getElementById('edit-mode-toggle');
-        const resetLayout = document.getElementById('reset-layout');
-        const saveLayout = document.getElementById('save-layout');
-
-        if (editModeToggle) {
-            editModeToggle.addEventListener('click', () => {
-                const grid = document.getElementById('streaming-grid');
-                grid.classList.toggle('edit-mode');
-                editModeToggle.textContent = grid.classList.contains('edit-mode') ? '🔒 Lock' : '🔓 Edit';
-            });
+    initializeStreamingMode() {
+        console.log('📺 Initializing streaming mode...');
+        if (typeof streamingWidgets !== 'undefined') {
+            streamingWidgets.createDefaultLayout();
         }
-
-        if (resetLayout) {
-            resetLayout.addEventListener('click', () => {
-                if (confirm('Reset to default layout?')) {
-                    streamingWidgets.resetLayout();
-                }
-            });
-        }
-
-        if (saveLayout) {
-            saveLayout.addEventListener('click', () => {
-                streamingWidgets.saveLayout();
-                alert('Layout saved!');
-            });
-        }
-
-        // Widget add buttons
-        document.querySelectorAll('.widget-add-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const widgetType = btn.dataset.widget;
-                streamingWidgets.addWidget(widgetType);
-            });
-        });
     }
-
-    /**
-     * UNIT FILTER
-     */
 
     updateUnitRosterFilter() {
         const cards = document.querySelectorAll('.unit-card');
@@ -396,35 +408,69 @@ class UIManager {
         });
     }
 
-    /**
-     * CONNECTION STATUS
-     */
+    updateUnitRosterSort() {
+        // Placeholder for unit roster sorting
+        console.log('Sorting units by:', this.unitSortBy);
+    }
 
-    setConnectionStatus(connected) {
-        const badge = document.getElementById('connection-status');
-        if (connected) {
-            badge.textContent = '🟢 Connected';
-            badge.classList.remove('disconnected');
-            badge.classList.add('connected');
-        } else {
-            badge.textContent = '🔴 Disconnected';
-            badge.classList.add('disconnected');
-            badge.classList.remove('connected');
+    initializeStreamingModeListeners() {
+        const editModeToggle = document.getElementById('edit-mode-toggle');
+        const resetLayout = document.getElementById('reset-layout');
+        const saveLayout = document.getElementById('save-layout');
+
+        if (editModeToggle) {
+            editModeToggle.addEventListener('click', () => {
+                const grid = document.getElementById('streaming-grid');
+                if (grid) {
+                    grid.classList.toggle('edit-mode');
+                    editModeToggle.textContent = grid.classList.contains('edit-mode') ? '🔒 Lock' : '🔓 Edit';
+                }
+            });
+        }
+
+        if (resetLayout) {
+            resetLayout.addEventListener('click', () => {
+                if (confirm('Reset to default layout?')) {
+                    if (typeof streamingWidgets !== 'undefined') {
+                        streamingWidgets.resetLayout();
+                    }
+                }
+            });
+        }
+
+        if (saveLayout) {
+            saveLayout.addEventListener('click', () => {
+                if (typeof streamingWidgets !== 'undefined') {
+                    streamingWidgets.saveLayout();
+                }
+                alert('Layout saved!');
+            });
+        }
+    }
+
+    updateTriggerFiredState(triggerId) {
+        const triggerEl = document.querySelector(`[data-trigger-id="${triggerId}"]`);
+        if (triggerEl) {
+            triggerEl.classList.add('fired');
+            setTimeout(() => {
+                triggerEl.classList.remove('fired');
+            }, 500);
         }
     }
 
     /**
-     * UTILITIES
+     * HELPER METHODS
      */
 
     formatNumber(num, decimals = 0) {
+        if (typeof num !== 'number') return '0';
+        
         if (num >= 1000000) {
             return (num / 1000000).toFixed(decimals) + 'M';
-        }
-        if (num >= 1000) {
+        } else if (num >= 1000) {
             return (num / 1000).toFixed(decimals) + 'K';
         }
-        return Math.round(num).toString();
+        return num.toFixed(decimals);
     }
 
     formatTime(timestamp) {
@@ -432,20 +478,22 @@ class UIManager {
         return date.toLocaleTimeString();
     }
 
-    formatAge(seconds) {
-        if (seconds < 60) return Math.round(seconds) + 's';
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.round(seconds % 60);
-        return `${minutes}m ${secs}s`;
-    }
-
-    initializeStreamingMode() {
-        // Create default widgets if none exist
-        if (document.querySelectorAll('.streaming-widget').length === 0) {
-            streamingWidgets.createDefaultLayout();
+    getName(name) {
+        if (window.unitDefs && window.unitDefs[name]) {
+            return window.unitDefs[name].name || name;
         }
+        return name;
     }
 }
 
-// Singleton instance
+// Create global instance and initialize on load
 const uiManager = new UIManager();
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        uiManager.initialize();
+    });
+} else {
+    uiManager.initialize();
+}

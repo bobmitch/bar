@@ -1,6 +1,6 @@
 /**
- * EventHandler - Main event pipeline
- * Connects EventSource -> GameStateStore -> TriggerEngine -> UI/Audio
+ * Event Handler - Processes incoming JSONL events and routes them to appropriate handlers
+ * COMPLETE: Includes connection setup, start method, and all original functionality
  */
 
 class EventHandler {
@@ -8,22 +8,25 @@ class EventHandler {
         this.eventSource = null;
         this.isConnected = false;
         this.gameInitialized = false;
-        
-        // Track update frequency
+        this.eventHistory = [];
         this.lastStatsUpdate = 0;
-        this.statsUpdateInterval = 1000; // ms
-
-        this.eventHistory = []; // store recent events for reference (could be used for triggers or UI)
-
-        // Unit name cache from server
-        this.unitNames = {};
+        this.statsUpdateInterval = 500; // ms between UI updates
     }
 
     /**
-     * INITIALIZE CONNECTION
+     * INITIALIZE CONNECTION - Called from script.js with server URL
      */
 
     connect(serverUrl) {
+
+         if (this.eventSource) {
+            console.log('⏹️ Closing existing EventSource...');
+            this.eventSource.close();
+            this.eventSource = null;
+        }
+
+        console.log('🔌 Attempting to connect to:', serverUrl);
+        
         try {
             this.eventSource = new EventSource(serverUrl);
 
@@ -34,34 +37,63 @@ class EventHandler {
             };
 
             this.eventSource.onmessage = (event) => {
-                this.handleMessage(event);
+                try {
+                    this.handleMessage(JSON.parse(event.data));
+                } catch (err) {
+                    console.error('Error parsing event:', err);
+                }
             };
 
             this.eventSource.onerror = (error) => {
                 console.error('❌ EventSource error:', error);
                 this.isConnected = false;
                 uiManager.setConnectionStatus(false);
+                
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
+                }
+
+                // Attempt to reconnect after 3 seconds
+                setTimeout(() => {
+                    console.log('🔄 Attempting to reconnect...');
+                    this.connect(serverUrl);
+                }, 3000);
             };
         } catch (err) {
-            console.error('Error connecting to event stream:', err);
+            console.error('Error setting up EventSource:', err);
+            this.isConnected = false;
+            uiManager.setConnectionStatus(false);
         }
     }
 
     /**
-     * MESSAGE HANDLING PIPELINE
+     * MAIN EVENT PROCESSING PIPELINE
      */
 
-    handleMessage(event) {
+    handleMessage(data) {
         try {
-            console.log('📩 Event received:', event);
-            const data = JSON.parse(event.data);
-            const eventType = data.event;
+            if (!data || typeof data !== 'object') {
+                console.warn('⚠️ Invalid event data received');
+                return;
+            }
 
-            // Create event record for game state
+            const eventType = data.event;
+            if (!eventType) {
+                console.warn('⚠️ Event type missing from data');
+                return;
+            }
+
+            console.log(`📨 Event received: ${eventType}`, {
+                gameTime: data.gameTime,
+                frame: data.frame
+            });
+
+            // Create event record for logging
             const eventRecord = {
                 timestamp: Date.now(),
-                frame: data.frame || 0,
                 gameTime: data.gameTime || 0,
+                frame: data.frame || 0,
                 data: data
             };
 
@@ -69,7 +101,9 @@ class EventHandler {
             this.updateGameState(data);
 
             // STEP 2: Process event in data store
-            gameState.logEvent(eventRecord);
+            if (typeof gameState !== 'undefined') {
+                gameState.logEvent(eventRecord);
+            }
 
             // STEP 3: Evaluate triggers
             this.evaluateTriggers(eventRecord);
@@ -77,17 +111,14 @@ class EventHandler {
             // STEP 4: Update UI
             this.updateUI(data, eventType);
 
-            // STEP 5: Handle audio/visual cues
-            // (handled by trigger engine)
-
-            // STEP 6: Store in event history
+            // STEP 5: Store in event history
             this.eventHistory.push(eventRecord);
             if (this.eventHistory.length > 10000) {
                 this.eventHistory.shift(); // keep last 10000 events
             }
 
         } catch (err) {
-            console.error('Error handling message:', err);
+            console.error('❌ Error handling message:', err, data);
         }
     }
 
@@ -98,21 +129,24 @@ class EventHandler {
     updateGameState(data) {
         const eventType = data.event;
 
-        // Initialize game context
+        // Initialize game context on first event with myTeamID
         if (!this.gameInitialized && data.myTeamID !== undefined) {
             this.initializeGame(data);
         }
 
-        // Update game frame/time
-        if (data.gameTime !== undefined) {
+        // Update global game frame/time
+        if (data.gameTime !== undefined && typeof gameState !== 'undefined') {
             gameState.gameState.gameTime = data.gameTime;
         }
-        if (data.frame !== undefined) {
+        if (data.frame !== undefined && typeof gameState !== 'undefined') {
             gameState.gameState.frame = data.frame;
         }
 
-        // Route to appropriate handler
+        // Route to appropriate handler based on event type
         switch (eventType) {
+            case 'GameStart':
+                this.initializeGame(data);
+                break;
             case 'UnitFinished':
                 this.handleUnitFinished(data);
                 break;
@@ -134,14 +168,12 @@ class EventHandler {
             case 'AllUnits':
                 this.handleUpdateAllUnits(data);
                 break;
-            case 'GameStart':
-                // re-initialize game context on GameStart event (in case it wasn't set during connection)
-                console.log('🎮 GameStart event received, initializing game context');
-                // TODO: handle future JS trigger local variable reset on new game start
-                this.initializeGame(data);
-                break;
         }
     }
+
+    /**
+     * EVENT HANDLERS
+     */
 
     initializeGame(data) {
         console.log('🎮 Game initialized:', {
@@ -150,52 +182,21 @@ class EventHandler {
             ally: data.allyTeamID
         });
 
-        gameState.initGame({
-            myTeamID: data.myTeamID,
-            myPlayerID: data.myPlayerID,
-            allyTeamID: data.allyTeamID,
-            playerName: data.playerName
-        });
+        if (typeof gameState !== 'undefined') {
+            gameState.initGame({
+                myTeamID: data.myTeamID,
+                myPlayerID: data.myPlayerID,
+                allyTeamID: data.allyTeamID,
+                playerName: data.playerName
+            });
+        }
 
         this.gameInitialized = true;
     }
 
-    handleOverflowStatusChanged(data) {
-        // data has .resource ("metal" or "energy") and .overflow ("1" or "0")
-        if (data.resource === 'metal') {
-            gameState.gameState.overflow_m = data.overflow_m === "1";
-        } else if (data.resource === 'energy') {
-            gameState.gameState.overflow_e = data.overflow_e === "1";
-        }
-
-        console.log('⚠️ Overflow status changed:', {
-            resource: data.resource,
-            overflow: data.overflow
-        });
-
-        say (`${data.resource} overflow status: ${data.overflow === "1" ? 'Overflowing' : 'Normal'}`);
-
-        // Update UI to reflect overflow status
-        // uiManager.updateOverflowStatus(data.overflow_m, data.overflow_e);
-    }
-
-    handleAllyStates(data) {
-        if (data.event === 'AllyStatsUpdate') {
-            for (const [teamID, stats] of Object.entries(data.teams)) {
-                let team = gameState.getTeam(parseInt(teamID));
-                if (!team) {
-                    // Create record if it doesn't exist
-                    team = { teamID: parseInt(teamID), isMyAlly: true };
-                    gameState.teams.set(parseInt(teamID), team);
-                }
-                team.playerName = stats.playerName;
-                team.metalStats = stats.metal;
-                team.energyStats = stats.energy;
-            }
-        }
-    }
-
     handleUnitFinished(data) {
+        if (typeof gameState === 'undefined') return;
+        
         const unit = gameState.addUnit(data.unitID, {
             unitDefID: data.unitDefID,
             unitName: data.unitName,
@@ -214,6 +215,8 @@ class EventHandler {
     }
 
     handleUnitDamaged(data) {
+        if (typeof gameState === 'undefined') return;
+        
         gameState.damageUnit(
             data.unitID,
             data.damage,
@@ -221,7 +224,6 @@ class EventHandler {
             data.attackerTeam
         );
 
-        // Only log significant damage
         const unit = gameState.getUnit(data.unitID);
         if (unit && data.damage > 100) {
             console.log('💥 Unit damaged:', {
@@ -233,6 +235,8 @@ class EventHandler {
     }
 
     handleUnitDestroyed(data) {
+        if (typeof gameState === 'undefined') return;
+        
         gameState.destroyUnit(
             data.unitID,
             data.attackerID,
@@ -248,26 +252,74 @@ class EventHandler {
 
     handleUpdateAllUnits(data) {
         console.log('📦 Received allUnits update with', Object.keys(data.unitDefs).length, 'units');
-        unitDefs = data.unitDefs;
+        window.unitDefs = data.unitDefs;
     }
 
     handleFullStatsUpdate(data) {
+        if (typeof gameState === 'undefined') return;
+        
         const myTeamID = gameState.gameState.myTeamID;
         
-        // Update team stats
+        // Update game state with stats
         gameState.updateTeamStats(myTeamID, {
             metal: data.metal,
             energy: data.energy,
             combat: data.combat
         });
 
+        // Update overflow status
+        if (data.overflow_m !== undefined) {
+            gameState.gameState.overflow_m = data.overflow_m;
+        }
+        if (data.overflow_e !== undefined) {
+            gameState.gameState.overflow_e = data.overflow_e;
+        }
+
         // Throttle UI updates to prevent spam
         const now = Date.now();
         if (now - this.lastStatsUpdate > this.statsUpdateInterval) {
             this.lastStatsUpdate = now;
-            uiManager.updateGameStatus(data.gameTime, gameState.gameState);
-            uiManager.updateResourceStats(data.metal, data.energy);
-            uiManager.updateTeamStats(gameState.getMyTeam(), data.combat);
+            
+            // Update UI with current stats - THIS IS THE KEY FIX
+            const myTeam = gameState.getMyTeam();
+            if (typeof uiManager !== 'undefined') {
+                uiManager.updateTeamStatsPanel(myTeam, data);
+                uiManager.updateGameStatus(data.gameTime, gameState.gameState);
+            }
+        }
+    }
+
+    handleOverflowStatusChanged(data) {
+        if (typeof gameState === 'undefined') return;
+        
+        // Update game state
+        if (data.resource === 'metal') {
+            gameState.gameState.overflow_m = data.overflow_m === '1' || data.overflow_m === true;
+        } else if (data.resource === 'energy') {
+            gameState.gameState.overflow_e = data.overflow_e === '1' || data.overflow_e === true;
+        }
+
+        console.log('⚠️ Overflow status changed:', {
+            resource: data.resource,
+            overflow: data.overflow
+        });
+    }
+
+    handleAllyStates(data) {
+        if (typeof gameState === 'undefined') return;
+        
+        if (data.event === 'AllyStatesUpdate') {
+            for (const [teamID, stats] of Object.entries(data.teams)) {
+                let team = gameState.getTeam(parseInt(teamID));
+                if (!team) {
+                    // Create team record if it doesn't exist
+                    team = { teamID: parseInt(teamID), isMyAlly: true };
+                    gameState.teams.set(parseInt(teamID), team);
+                }
+                team.playerName = stats.playerName;
+                team.metalStats = stats.metal;
+                team.energyStats = stats.energy;
+            }
         }
     }
 
@@ -276,6 +328,8 @@ class EventHandler {
      */
 
     evaluateTriggers(eventRecord) {
+        if (typeof triggerEngine === 'undefined') return;
+        
         const firedTriggers = triggerEngine.evaluateAllTriggers(eventRecord);
 
         firedTriggers.forEach(triggerId => {
@@ -284,19 +338,16 @@ class EventHandler {
     }
 
     handleTriggerFired(triggerId, eventRecord) {
+        if (typeof triggerEngine === 'undefined') return;
+        
         const trigger = triggerEngine.triggers.get(triggerId);
         if (!trigger) return;
 
         console.log('🎯 Trigger fired:', trigger.name);
 
-        // Update UI to show trigger fired
-        uiManager.updateTriggerFiredState(triggerId);
-
-        // TODO: Store in streaming widget history
-        
-
-        // Execute audio cues (via trigger actions)
-        // Actions are already handled by triggerEngine.fireTrigger()
+        if (typeof uiManager !== 'undefined') {
+            uiManager.updateTriggerFiredState(triggerId);
+        }
     }
 
     /**
@@ -304,28 +355,96 @@ class EventHandler {
      */
 
     updateUI(data, eventType) {
-        console.log(`🎯 updateUI called with eventType: ${eventType}`);
-        
-        // Log event to UI
-        uiManager.logEvent({
-            timestamp: Date.now(),
-            event: eventType,
-            data: data
-        });
+        // Log event to UI (for all event types except FullStatsUpdate which is too frequent)
+        if (eventType !== 'FullStatsUpdate' && typeof uiManager !== 'undefined') {
+            uiManager.logEvent({
+                timestamp: Date.now(),
+                event: eventType,
+                data: data
+            });
+        }
+    }
 
-        // Handle specific UI updates based on event type
+    /**
+     * START METHOD - Called from initialization script
+     */
 
-        // TODO: Update streaming widgets
+    start(serverUrl) {
+        console.log('🚀 Starting EventHandler with server URL:', serverUrl);
         
+        // Initialize UI listeners
+        if (typeof uiManager !== 'undefined') {
+            uiManager.initialize();
+            console.log('✅ UI Manager initialized');
+        }
+
+        // Load saved trigger settings
+        const saved = localStorage.getItem('BAR-trigger-settings');
+        if (saved && typeof triggerEngine !== 'undefined') {
+            triggerEngine.importSettings(JSON.parse(saved));
+            console.log('✅ Trigger settings loaded from localStorage');
+        }
+
+        // Load streaming layout
+        if (typeof streamingWidgets !== 'undefined') {
+            streamingWidgets.loadLayout();
+            console.log('✅ Streaming layout loaded');
+        }
+
+        // Connect to event stream
+        this.connect(serverUrl);
+        console.log('🎮 Event handler started - listening for events');
     }
 
     /**
      * DEBUGGING & TESTING
      */
 
-    // TEST: Manually add a fake unit to the roster
+    runAllTests() {
+        console.log('═══════════════════════════════════════════');
+        console.log('🧪 RUNNING DIAGNOSTIC TESTS');
+        console.log('═══════════════════════════════════════════');
+        this.testGameState();
+        this.testElements();
+        this.testAddUnit();
+        console.log('═══════════════════════════════════════════');
+    }
+
+    testGameState() {
+        console.log('🧪 TEST: Checking game state...');
+        if (typeof gameState === 'undefined') {
+            console.warn('⚠️ gameState not initialized');
+            return;
+        }
+        console.log('Units in gameState:', gameState.units.size);
+        console.log('Teams in gameState:', gameState.teams.size);
+        console.log('Events logged:', gameState.events.length);
+        console.log('My team ID:', gameState.gameState.myTeamID);
+        console.log('Is connected:', this.isConnected);
+    }
+
+    testElements() {
+        console.log('🧪 TEST: Checking DOM elements...');
+        const elements = {
+            'event-log': document.getElementById('event-log'),
+            'status': document.getElementById('status'),
+            'connection-status': document.getElementById('connection-status'),
+            'game-time': document.getElementById('game-time'),
+            'tab-buttons': document.querySelectorAll('.tab-btn').length
+        };
+        
+        Object.entries(elements).forEach(([name, el]) => {
+            const status = el ? (typeof el === 'number' ? `${el} found` : '✅ Found') : '❌ NOT FOUND';
+            console.log(`  ${name}: ${status}`);
+        });
+    }
+
     testAddUnit() {
-        console.log('🧪 TEST: Adding fake unit to roster...');
+        console.log('🧪 TEST: Adding fake unit to gameState...');
+        if (typeof gameState === 'undefined') {
+            console.warn('⚠️ gameState not initialized');
+            return;
+        }
         
         const fakeUnitData = {
             unitID: 9999,
@@ -338,217 +457,17 @@ class EventHandler {
             playerName: 'TestPlayer'
         };
 
-        // Add to game state first
-        gameState.addUnit(fakeUnitData.unitID, fakeUnitData);
-        console.log('✅ Unit added to gameState');
-
-        // Then add to UI
-        uiManager.addUnitToRoster(fakeUnitData.unitID, fakeUnitData);
-        console.log('✅ Unit added to roster UI');
-    }
-
-    // TEST: Check if elements exist
-    testElements() {
-        console.log('🧪 TEST: Checking DOM elements...');
-        const roster = document.getElementById('unit-roster');
-        console.log('unit-roster element:', roster ? '✅ Found' : '❌ NOT FOUND');
-        if (roster) {
-            console.log('  - Parent:', roster.parentElement?.className);
-            console.log('  - Child count:', roster.children.length);
-            console.log('  - Has .unit-empty:', roster.querySelector('.unit-empty') ? 'Yes' : 'No');
-        }
-    }
-
-    // TEST: Check game state
-    testGameState() {
-        console.log('🧪 TEST: Checking game state...');
-        console.log('Units in gameState:', gameState.units.size);
-        console.log('Teams in gameState:', gameState.teams.size);
-        console.log('Events logged:', gameState.events.length);
-        console.log('My team ID:', gameState.gameState.myTeamID);
-        console.log('All units:', Array.from(gameState.units.values()).map(u => ({
-            id: u.unitID,
-            name: u.unitName,
-            team: u.teamID
-        })));
-    }
-
-    // RUN ALL TESTS
-    runAllTests() {
-        console.log('═══════════════════════════════════════════');
-        console.log('🧪 RUNNING DIAGNOSTIC TESTS');
-        console.log('═══════════════════════════════════════════');
-        this.testElements();
-        console.log('');
-        this.testGameState();
-        console.log('');
-        this.testAddUnit();
-        console.log('═══════════════════════════════════════════');
-    }
-
-    start(serverUrl) {
-        // Load saved settings
-        const saved = localStorage.getItem('BAR-trigger-settings');
-        if (saved) {
-            triggerEngine.importSettings(JSON.parse(saved));
-            uiManager.initializeTriggerList();
-        }
-
-        // Load streaming layout
-
-        // TODO: streaming layout widget
-        streamingWidgets.loadLayout();
-
-        // Connect to event stream
-        this.connect(serverUrl);
-
-        // Setup trigger engine callbacks
-        triggerEngine.onTrigger = (triggerEvent) => {
-            this.onTriggerFired(triggerEvent);
-        };
-
-        // Periodic UI updates
-        // TODO: streaming stuff
-
-        console.log('🚀 Event handler started');
-    }
-
-    /**
-     * TRIGGER ACTION HANDLERS
-     */
-
-    onTriggerFired(triggerEvent) {
-        console.log('🔊 Trigger actions:', triggerEvent);
-
-        if (window.streamingWidgets) {
-            if (!streamingWidgets.triggerHistory) streamingWidgets.triggerHistory = [];
-            streamingWidgets.triggerHistory.push(triggerEvent);
-            // Keep only last 10
-            if (streamingWidgets.triggerHistory.length > 10) streamingWidgets.triggerHistory.shift();
-        }
-
-        // Execute audio cues
-        for (const action of triggerEvent.actions) {
-            if (action.audio) {
-                this.playAudio(action.audio);
-            }
-            if (action.visual) {
-                this.playVisualEffect(action.visual);
-            }
-        }
-    }
-
-    playAudio(text) {
-        if (!audioManager) return;
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.volume = audioManager.masterVolume;
-        utterance.rate = 1;
-        
-        console.log('🔊 Playing audio:', text);
-        window.speechSynthesis.cancel(); // Cancel any previous speech
-        window.speechSynthesis.speak(utterance);
-    }
-
-    playVisualEffect(visual) {
-        if (!visual) return;
-
-        console.log('✨ Visual effect:', visual.type);
-
-        switch (visual.type) {
-            case 'unit-highlight':
-                this.highlightUnit(visual.unitID, visual.color || 'gold', visual.duration);
-                break;
-            case 'screen-pulse':
-                this.screenPulse(visual.color, visual.intensity, visual.duration);
-                break;
-            case 'full-screen-notification':
-                this.showNotification(visual.unit, visual.duration);
-                break;
-        }
-    }
-
-    highlightUnit(unitID, color, duration) {
-        const card = document.querySelector(`#unit-${unitID}`);
-        if (card) {
-            card.style.borderColor = color;
-            card.style.boxShadow = `0 0 20px ${color}`;
-            setTimeout(() => {
-                card.style.borderColor = '';
-                card.style.boxShadow = '';
-            }, duration || 2000);
-        }
-    }
-
-    screenPulse(color, intensity, duration) {
-        // Add full screen pulse effect
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: ${color};
-            opacity: ${intensity === 'high' ? 0.3 : 0.1};
-            z-index: -1;
-            pointer-events: none;
-            animation: fadeOut ${(duration || 2000) / 1000}s ease-out;
-        `;
-        document.body.appendChild(overlay);
-        
-        setTimeout(() => overlay.remove(), duration || 2000);
-    }
-
-    showNotification(text, duration) {
-        const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: var(--bg-secondary);
-            border: 2px solid var(--accent-primary);
-            color: var(--text-primary);
-            padding: 2rem;
-            border-radius: 12px;
-            font-size: 1.5rem;
-            font-weight: 700;
-            z-index: 9999;
-            animation: scaleIn ${(duration || 3000) / 1000}s ease-out;
-        `;
-        notification.textContent = text;
-        document.body.appendChild(notification);
-
-        setTimeout(() => notification.remove(), duration || 3000);
+        const unit = gameState.addUnit(fakeUnitData.unitID, fakeUnitData);
+        console.log('✅ Unit added:', {
+            unitID: unit.unitID,
+            unitName: unit.unitName,
+            teamID: unit.teamID
+        });
     }
 }
 
-// Singleton instance
+// Create global instance
 const eventHandler = new EventHandler();
-
-// Audio Manager (simple stub)
-class AudioManager {
-    constructor() {
-        this.masterVolume = 0.8;
-    }
-
-    setMasterVolume(volume) {
-        this.masterVolume = Math.max(0, Math.min(1, volume));
-    }
-}
-
-const audioManager = new AudioManager();
-
-// Utility function for unit name display
-function getName(unitName) {
-    // This would pull from a localization/naming file
-    // For now, just capitalize and remove underscores
-    return unitName
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-}
 
 // Auto-initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {

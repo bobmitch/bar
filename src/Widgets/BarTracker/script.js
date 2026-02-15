@@ -15,3 +15,4 @@ let metalReclaimed = 0;
 let energyReclaimed = 0;
 
 
+eventHandler.start(serverUrl)

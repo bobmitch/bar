@@ -863,4 +863,290 @@ h5, p {
     }
 }
 
+/* ============================================
+   TEAM STATUS PANEL STYLING - FIXED & ENHANCED
+   ============================================ */
+
+#status {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 8px 0;
+}
+
+.stat-section {
+    border-left: 3px solid #00a8ff;
+    padding: 8px 12px;
+    background: rgba(0, 168, 255, 0.05);
+    border-radius: 2px;
+}
+
+.stat-section:nth-child(2) {
+    border-left-color: #ff6b35;
+    background: rgba(255, 107, 53, 0.05);
+}
+
+.stat-section:nth-child(3) {
+    border-left-color: #ffd700;
+    background: rgba(255, 215, 0, 0.05);
+}
+
+.stat-section:nth-child(4) {
+    border-left-color: #00d084;
+    background: rgba(0, 208, 132, 0.05);
+}
+
+.stat-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #aaa;
+    margin-bottom: 6px;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+.stat-row.overflow-active {
+    background: rgba(255, 107, 53, 0.1);
+    padding: 4px 6px;
+    margin: 0 -6px;
+    border-radius: 2px;
+}
+
+.stat-label {
+    color: #ccc;
+    font-weight: 500;
+    text-align: left;
+}
+
+.stat-value {
+    color: #00d084;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
+.stat-value.stat-positive {
+    color: #00d084;
+}
+
+.stat-value.stat-negative {
+    color: #ff6b35;
+}
+
+/* ============================================
+   EVENT LOG ITEM STYLING
+   ============================================ */
+
+.event-item {
+    display: grid;
+    grid-template-columns: 60px 100px 1fr;
+    gap: 8px;
+    padding: 6px 8px;
+    border-left: 3px solid #333;
+    background: rgba(255, 255, 255, 0.02);
+    margin-bottom: 4px;
+    border-radius: 2px;
+    font-size: 11px;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.event-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-left-color: #00a8ff;
+}
+
+.event-item.event-priority-high {
+    border-left-color: #00d084;
+    background: rgba(0, 208, 132, 0.08);
+}
+
+.event-item.event-priority-critical {
+    border-left-color: #ff6b35;
+    background: rgba(255, 107, 53, 0.1);
+}
+
+.event-item.event-priority-low {
+    opacity: 0.6;
+}
+
+.event-timestamp {
+    color: #888;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+}
+
+.event-type {
+    color: #00a8ff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+
+.event-details {
+    color: #ccc;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================
+   STATUS BADGE
+   ============================================ */
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 2px;
+    font-weight: 600;
+    font-size: 11px;
+    display: inline-block;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.connected {
+    background: rgba(0, 208, 132, 0.2);
+    color: #00d084;
+    border: 1px solid rgba(0, 208, 132, 0.4);
+}
+
+.status-badge.disconnected {
+    background: rgba(255, 107, 53, 0.2);
+    color: #ff6b35;
+    border: 1px solid rgba(255, 107, 53, 0.4);
+}
+
+/* ============================================
+   PANEL LAYOUT
+   ============================================ */
+
+.bar-panel {
+    background: linear-gradient(135deg, rgba(20, 30, 40, 0.9) 0%, rgba(15, 25, 35, 0.95) 100%);
+    border: 1px solid rgba(0, 168, 255, 0.2);
+    border-radius: 2px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 168, 255, 0.3);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #00a8ff;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.bar-btn-small {
+    background: rgba(0, 168, 255, 0.15);
+    color: #00a8ff;
+    border: 1px solid rgba(0, 168, 255, 0.3);
+    padding: 4px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 600;
+}
+
+.bar-btn-small:hover {
+    background: rgba(0, 168, 255, 0.25);
+    border-color: rgba(0, 168, 255, 0.6);
+}
+
+/* ============================================
+   CONTENT LAYOUT
+   ============================================ */
+
+.status-content {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 400px;
+    padding-right: 4px;
+}
+
+.status-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.status-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+}
+
+.status-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 168, 255, 0.3);
+    border-radius: 2px;
+}
+
+.status-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 168, 255, 0.5);
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+@media (max-width: 768px) {
+    .stat-row {
+        font-size: 11px;
+    }
+
+    .stat-section {
+        padding: 6px 8px;
+    }
+
+    .event-item {
+        grid-template-columns: 50px 80px 1fr;
+        gap: 4px;
+        font-size: 10px;
+    }
+}
+
+/* ============================================
+   ANIMATION - TRIGGER FIRED STATE
+   ============================================ */
+
+@keyframes triggerFired {
+    0% {
+        box-shadow: 0 0 0 0 rgba(0, 208, 132, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 10px 4px rgba(0, 208, 132, 0.3);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 208, 132, 0);
+    }
+}
+
+[data-trigger-id].fired {
+    animation: triggerFired 0.5s ease-out;
+}
+
 
