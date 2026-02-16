@@ -4,6 +4,8 @@ A real-time fun audio trigger and streaming overlay system for **Beyond All Reas
 
 [Try It Here](https://bar.bobmitch.com)
 
+[Discussion](https://discord.gg/NK7QWfVE9M)
+
 ## 🚀 Features
 
 * **Real-time Battle Log**: Subscribes to a live event stream (SSE) to track unit production, damage, and destruction.
