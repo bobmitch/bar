@@ -2,6 +2,8 @@
 
 A real-time fun audio trigger and streaming overlay system for **Beyond All Reason (BAR)**. This project tracks in-game events via a data stream and provides audio announcements, visual alerts, and customizable dashboard widgets.
 
+[Try It Here](https://bar.bobmitch.com)
+
 ## 🚀 Features
 
 * **Real-time Battle Log**: Subscribes to a live event stream (SSE) to track unit production, damage, and destruction.
