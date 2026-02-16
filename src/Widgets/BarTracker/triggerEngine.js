@@ -140,6 +140,7 @@ class TriggerEngine {
             if (conditionsMet) {
                 this.fireTrigger(triggerId, eventData);
                 firedTriggers.push(triggerId);
+                uiManager.logTrigger(trigger);
             }
         }
 

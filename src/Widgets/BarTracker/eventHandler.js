@@ -356,7 +356,7 @@ class EventHandler {
 
     updateUI(data, eventType) {
         // Log event to UI (for all event types except FullStatsUpdate which is too frequent)
-        if (eventType !== 'FullStatsUpdate' && typeof uiManager !== 'undefined') {
+        if (eventType !== 'unitDamaged' &&eventType !== 'FullStatsUpdate' && typeof uiManager !== 'undefined') {
             uiManager.logEvent({
                 timestamp: Date.now(),
                 event: eventType,

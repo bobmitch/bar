@@ -292,15 +292,6 @@ class UIManager {
                 const icon = isMyUnit ? '✅' : '🔧';
                 details = `<span class="event-details">${icon} ${this.getName(unitName)} completed</span>`;
                 priority = isMyUnit ? 'high' : 'normal';
-            } else if (eventType === 'UnitDamaged') {
-                const damage = Math.round(eventData?.damage || 0);
-                const unitID = eventData?.unitID;
-                const unit = gameState.units.get(unitID);
-                const unitName = unit?.unitName || 'unknown';
-                const damageColor = '#ff6b35';
-                details = `<span class="event-details" style="color: ${damageColor}; font-weight: 600;">
-                    🔴 ${this.getName(unitName)} took ${damage} dmg
-                </span>`;
             } else if (eventType === 'UnitDestroyed') {
                 const unitName = eventData?.unitName || 'unknown';
                 const attackerName = eventData?.attackerName || 'unknown';
@@ -335,6 +326,30 @@ class UIManager {
             }
         } catch (err) {
             console.error('❌ Error in logEvent:', err);
+        }
+    }
+
+    logTrigger(trigger) {
+        const logArea = document.getElementById('event-log');
+        if (!logArea) return;
+
+        const triggerItem = document.createElement('div');
+        triggerItem.className = 'event-item event-trigger event-priority-critical';
+        
+        const timestamp = this.formatTime(Date.now());
+        const triggerName = trigger.name || 'unknown trigger';
+        
+        triggerItem.innerHTML = `
+            <div class="event-timestamp">${timestamp}</div>
+            <div class="event-type">Trigger Fired</div>
+            <div class="event-details">🚨 ${triggerName}</div>
+        `;
+
+        logArea.insertBefore(triggerItem, logArea.firstChild);
+
+        // Limit log size
+        while (logArea.children.length > this.eventLogLimit) {
+            logArea.removeChild(logArea.lastChild);
         }
     }
 
