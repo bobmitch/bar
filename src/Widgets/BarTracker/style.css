@@ -1149,4 +1149,37 @@ h5, p {
     animation: triggerFired 0.5s ease-out;
 }
 
+#copy-uuid-btn {
+    padding: 0.5rem 0.75rem;
+    background: #6b7280;
+    color: white;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+#copy-uuid-btn:hover {
+    background: #4b5563;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+#copy-uuid-btn:active {
+    transform: translateY(0);
+}
+
+/* Success state (applied briefly when copied) */
+#copy-uuid-btn[data-state="success"] {
+    background: #10b981;
+}
+
+/* Error state (if copy fails) */
+#copy-uuid-btn[data-state="error"] {
+    background: #ef4444;
+}
+
 

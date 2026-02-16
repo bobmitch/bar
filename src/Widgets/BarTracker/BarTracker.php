@@ -34,6 +34,7 @@ class BarTracker extends Widget {
 			<header class="bar-header">
 				<div class="bar-brand">BAR TRACKER <span class="v-tag">v0.2 Dev</span></div>
 				<div class="header-status">
+					<button id="copy-uuid-btn" class="bar-btn-small" title="Copy your UUID to clipboard">📋 Copy UUID</button>
 					<div id="connection-status" class="status-badge disconnected">🔴 OFFLINE</div>
 					<div id="game-time" class="timer">00:00</div>
 				</div>
@@ -305,6 +306,8 @@ class BarTracker extends Widget {
 				}
 			});
 		</script>
+
+		<script><?php echo file_get_contents(__DIR__ . '/copy_uuid.js'); ?></script>
 
 		<!-- Styles -->
 		<style>
