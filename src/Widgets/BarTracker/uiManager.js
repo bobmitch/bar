@@ -87,7 +87,8 @@ class UIManager {
         }
 
         // Streaming mode listeners (if available)
-        this.initializeStreamingModeListeners();
+        // none yet
+        // this.initializeStreamingModeListeners();
 
         console.log('✅ Event listeners initialized');
     }
@@ -367,6 +368,9 @@ class UIManager {
     switchView(viewName) {
         console.log('📌 Switching to view:', viewName);
 
+        // add viewname to body for global css changing
+        document.body.dataset.view = viewName;
+
         if (this.currentView === viewName) {
             console.log('   Already on this view, skipping...');
             return;
@@ -410,7 +414,7 @@ class UIManager {
     initializeStreamingMode() {
         console.log('📺 Initializing streaming mode...');
         if (typeof streamingWidgets !== 'undefined') {
-            streamingWidgets.createDefaultLayout();
+            // do nothing for now - placeholder for future streaming-specific UI setup
         }
     }
 
@@ -428,40 +432,7 @@ class UIManager {
         console.log('Sorting units by:', this.unitSortBy);
     }
 
-    initializeStreamingModeListeners() {
-        const editModeToggle = document.getElementById('edit-mode-toggle');
-        const resetLayout = document.getElementById('reset-layout');
-        const saveLayout = document.getElementById('save-layout');
-
-        if (editModeToggle) {
-            editModeToggle.addEventListener('click', () => {
-                const grid = document.getElementById('streaming-grid');
-                if (grid) {
-                    grid.classList.toggle('edit-mode');
-                    editModeToggle.textContent = grid.classList.contains('edit-mode') ? '🔒 Lock' : '🔓 Edit';
-                }
-            });
-        }
-
-        if (resetLayout) {
-            resetLayout.addEventListener('click', () => {
-                if (confirm('Reset to default layout?')) {
-                    if (typeof streamingWidgets !== 'undefined') {
-                        streamingWidgets.resetLayout();
-                    }
-                }
-            });
-        }
-
-        if (saveLayout) {
-            saveLayout.addEventListener('click', () => {
-                if (typeof streamingWidgets !== 'undefined') {
-                    streamingWidgets.saveLayout();
-                }
-                alert('Layout saved!');
-            });
-        }
-    }
+    
 
     updateTriggerFiredState(triggerId) {
         const triggerEl = document.querySelector(`[data-trigger-id="${triggerId}"]`);
@@ -511,4 +482,14 @@ if (document.readyState === 'loading') {
     });
 } else {
     uiManager.initialize();
+}
+
+let streamingView = document.getElementById('streaming-view');
+if (streamingView) {
+    streamingView.addEventListener('dblclick', () => {
+        console.log('🔄 Double click detected on streaming view - switching to standard view');
+        uiManager.switchView('standard');
+    });
+} else {
+    console.warn('⚠️ #streaming-view element not found - cannot attach double click listener for view switching');
 }

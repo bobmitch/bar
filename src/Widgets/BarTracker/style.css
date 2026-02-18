@@ -1182,4 +1182,25 @@ h5, p {
     background: #ef4444;
 }
 
+html:has(body[data-view="streaming"]) {
+    overflow: hidden;
+    background:rgba(0,0,0,0)!important;
+}   
+body[data-view="streaming"]  {
+    background:rgba(0,0,0,0)!important;
+    overflow:hidden;
+    header,  nav {
+        opacity:0;
+        pointer-events:none;
+        display:none;
+    }
+    .bar-widget-container {
+        /* strimmer mode - make everything full screen and remove padding */
+        padding:0;
+        background-color: rgba(0,0,0,0)!important
+    }
+}
+.view-section.active {
+    height:96dvh;
+}
 

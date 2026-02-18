@@ -151,18 +151,6 @@ class BarTracker extends Widget {
 
 				<!-- ========== STREAMING VIEW ========== -->
 				<section id="streaming-view" class="view-section">
-					<div class="layout-controls">
-						<button id="add-widget-dropdown-btn" class="bar-btn-primary">+ Add Widget</button>
-						<button id="edit-layout-btn" class="bar-btn-small">Edit Layout</button>
-						<button id="exit-streaming-btn" class="bar-btn-small">Back to Dashboard</button>
-
-						<div id="widget-library-dropdown" class="bar-panel widget-dropdown hidden">
-							<button class="widget-add-btn" data-widget="game-timer">⏱️ Timer</button>
-							<button class="widget-add-btn" data-widget="economy-minimal">💰 Economy</button>
-							<button class="widget-add-btn" data-widget="combat-overview">⚔️ Combat</button>
-							<button class="widget-add-btn" data-widget="trigger-panel">🎯 Alerts</button>
-						</div>
-					</div>
 					<div id="streaming-widgets-container"></div>
 				</section>
 
@@ -181,7 +169,6 @@ class BarTracker extends Widget {
 		<!-- Core Game Systems -->
 		<script src="/src/Widgets/BarTracker/gameStateStore.js"></script>
 		<script src="/src/Widgets/BarTracker/triggerEngine.js"></script>
-		<script src="/src/Widgets/BarTracker/streamingWidgets.js"></script>
 
 		<!-- UI Managers -->
 		<script src="/src/Widgets/BarTracker/uiManager.js"></script>
