@@ -11,6 +11,15 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta http-equiv="X-UA-Compatible" content="ie=edge">
 	<link rel="stylesheet" href="/src/templates/bartracker/style.css">
+	<!-- Google tag (gtag.js) -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-WP320HP10D"></script>
+	<script>
+	window.dataLayer = window.dataLayer || [];
+	function gtag(){dataLayer.push(arguments);}
+	gtag('js', new Date());
+
+	gtag('config', 'G-WP320HP10D');
+	</script>
 	<!--CMSHEAD-->
 </head>
 <body class='alias_<?php echo CMS::Instance()->page->alias;?>'>
