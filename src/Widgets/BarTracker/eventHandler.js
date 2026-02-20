@@ -1,6 +1,8 @@
 /**
  * Event Handler - Processes incoming JSONL events and routes them to appropriate handlers
  * COMPLETE: Includes connection setup, start method, and all original functionality
+ * 
+ * UPDATED: All event type strings replaced with BAR_EVENTS constants (eventTypes.js)
  */
 
 class EventHandler {
@@ -19,7 +21,7 @@ class EventHandler {
 
     connect(serverUrl) {
 
-         if (this.eventSource) {
+        if (this.eventSource) {
             console.log('⏹️ Closing existing EventSource...');
             this.eventSource.close();
             this.eventSource = null;
@@ -84,10 +86,19 @@ class EventHandler {
                 return;
             }
 
-            console.log(`📨 Event received: ${eventType}`, {
-                gameTime: data.gameTime,
-                frame: data.frame
-            });
+            // Warn on unknown event types so new events from the LUA widget surface immediately
+            if (!BAR_EVENT_META[eventType]) {
+                console.warn(`⚠️ Unknown event type received: "${eventType}" — add to eventTypes.js`);
+            }
+
+            const meta = getEventMeta(eventType);
+
+            if (!meta.throttle) {
+                console.log(`📨 Event received: ${eventType}`, {
+                    gameTime: data.gameTime,
+                    frame: data.frame
+                });
+            }
 
             // Create event record for logging
             const eventRecord = {
@@ -109,7 +120,7 @@ class EventHandler {
             this.evaluateTriggers(eventRecord);
 
             // STEP 4: Update UI
-            this.updateUI(data, eventType);
+            this.updateUI(data, eventType, meta);
 
             // STEP 5: Store in event history
             this.eventHistory.push(eventRecord);
@@ -144,30 +155,38 @@ class EventHandler {
 
         // Route to appropriate handler based on event type
         switch (eventType) {
-            case 'GameStart':
+            case BAR_EVENTS.GAME_START:
                 this.initializeGame(data);
                 break;
-            case 'UnitFinished':
+            case BAR_EVENTS.UNIT_FINISHED:
                 this.handleUnitFinished(data);
                 break;
-            case 'UnitDamaged':
+            case BAR_EVENTS.UNIT_DAMAGED:
                 this.handleUnitDamaged(data);
                 break;
-            case 'UnitDestroyed':
+            case BAR_EVENTS.UNIT_DESTROYED:
                 this.handleUnitDestroyed(data);
                 break;
-            case 'FullStatsUpdate':
+            case BAR_EVENTS.FULL_STATS_UPDATE:
                 this.handleFullStatsUpdate(data);
                 break;
-            case 'OverflowStatusChanged':
+            case BAR_EVENTS.OVERFLOW_STATUS_CHANGED:
                 this.handleOverflowStatusChanged(data);
                 break;
-            case 'AllyStatesUpdate':
+            case BAR_EVENTS.ALLY_STATES_UPDATE:
                 this.handleAllyStates(data);
                 break;
-            case 'AllUnits':
+            case BAR_EVENTS.ALL_UNITS:
                 this.handleUpdateAllUnits(data);
                 break;
+            case BAR_EVENTS.WIDGET_INITIALIZED_PRE_GAME:
+                // Pre-game init — no state changes needed, connection confirmed
+                break;
+            case BAR_EVENTS.GAME_OVER:
+                this.handleGameOver(data);
+                break;
+            // NOTE: BAR_EVENTS.ALLY_STATS_UPDATE is handled in handleFullStatsUpdate
+            // flow — add a dedicated case here if ally stats need separate state updates
         }
     }
 
@@ -194,10 +213,15 @@ class EventHandler {
         this.gameInitialized = true;
     }
 
+    handleGameOver(data) {
+        console.log('🏁 Game over received', data);
+        // Placeholder — add end-of-game state handling here
+    }
+
     handleUnitFinished(data) {
         if (typeof gameState === 'undefined') return;
         
-        const unit = gameState.addUnit(data.unitID, {
+        gameState.addUnit(data.unitID, {
             unitDefID: data.unitDefID,
             unitName: data.unitName,
             unitTeam: data.unitTeam,
@@ -280,7 +304,6 @@ class EventHandler {
         if (now - this.lastStatsUpdate > this.statsUpdateInterval) {
             this.lastStatsUpdate = now;
             
-            // Update UI with current stats - THIS IS THE KEY FIX
             const myTeam = gameState.getMyTeam();
             if (typeof uiManager !== 'undefined') {
                 uiManager.updateTeamStatsPanel(myTeam, data);
@@ -292,7 +315,6 @@ class EventHandler {
     handleOverflowStatusChanged(data) {
         if (typeof gameState === 'undefined') return;
         
-        // Update game state
         if (data.resource === 'metal') {
             gameState.gameState.overflow_m = data.overflow_m === '1' || data.overflow_m === true;
         } else if (data.resource === 'energy') {
@@ -308,18 +330,18 @@ class EventHandler {
     handleAllyStates(data) {
         if (typeof gameState === 'undefined') return;
         
-        if (data.event === 'AllyStatesUpdate') {
-            for (const [teamID, stats] of Object.entries(data.teams)) {
-                let team = gameState.getTeam(parseInt(teamID));
-                if (!team) {
-                    // Create team record if it doesn't exist
-                    team = { teamID: parseInt(teamID), isMyAlly: true };
-                    gameState.teams.set(parseInt(teamID), team);
-                }
-                team.playerName = stats.playerName;
-                team.metalStats = stats.metal;
-                team.energyStats = stats.energy;
+        // Guard: this handler is for AllyStatesUpdate, not AllyStatsUpdate
+        if (data.event !== BAR_EVENTS.ALLY_STATES_UPDATE) return;
+
+        for (const [teamID, stats] of Object.entries(data.teams)) {
+            let team = gameState.getTeam(parseInt(teamID));
+            if (!team) {
+                team = { teamID: parseInt(teamID), isMyAlly: true };
+                gameState.teams.set(parseInt(teamID), team);
             }
+            team.playerName = stats.playerName;
+            team.metalStats = stats.metal;
+            team.energyStats = stats.energy;
         }
     }
 
@@ -352,11 +374,16 @@ class EventHandler {
 
     /**
      * UI UPDATES
+     * 
+     * Uses BAR_EVENT_META.logToBattleLog to decide what gets logged,
+     * replacing the previous hardcoded string exclusion list.
      */
 
-    updateUI(data, eventType) {
-        // Log event to UI (for all event types except FullStatsUpdate which is too frequent)
-        if (eventType !== 'unitDamaged' &&eventType !== 'FullStatsUpdate' && typeof uiManager !== 'undefined') {
+    updateUI(data, eventType, meta) {
+        // meta is passed in from handleMessage, avoiding a second getEventMeta() call
+        if (!meta) meta = getEventMeta(eventType);
+
+        if (meta.logToBattleLog && typeof uiManager !== 'undefined') {
             uiManager.logEvent({
                 timestamp: Date.now(),
                 event: eventType,
@@ -372,7 +399,6 @@ class EventHandler {
     start(serverUrl) {
         console.log('🚀 Starting EventHandler with server URL:', serverUrl);
         
-        // Initialize UI listeners
         if (typeof uiManager !== 'undefined') {
             uiManager.initialize();
             console.log('✅ UI Manager initialized');
@@ -421,6 +447,7 @@ class EventHandler {
         console.log('Events logged:', gameState.events.length);
         console.log('My team ID:', gameState.gameState.myTeamID);
         console.log('Is connected:', this.isConnected);
+        console.log('Known event types:', Object.keys(BAR_EVENTS).length);
     }
 
     testElements() {
@@ -471,7 +498,6 @@ const eventHandler = new EventHandler();
 
 // Auto-initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    // Get the server URL from PHP (passed via data attribute or fetch)
     const serverUrl = new URLSearchParams(window.location.search).get('stream_url') ||
                      'https://barapi.bobmitch.com/subscribe?topic=' + encodeURIComponent(window.uuid);
 

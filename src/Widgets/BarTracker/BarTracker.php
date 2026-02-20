@@ -184,6 +184,9 @@ class BarTracker extends Widget {
 			let unitDefs = unitDefs_raw.d.unitDefs;
 		</script>
 
+        <!-- Event Types -->
+        <script src="/src/Widgets/BarTracker/eventTypes.js"></script>
+
 		<!-- Core Game Systems -->
 		<script src="/src/Widgets/BarTracker/gameStateStore.js"></script>
 		<script src="/src/Widgets/BarTracker/triggerEngine.js"></script>

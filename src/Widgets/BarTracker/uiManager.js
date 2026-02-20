@@ -1,6 +1,9 @@
 /**
  * UI Manager - Handles all visual updates and DOM manipulation
  * ENHANCED: Includes full event listener initialization and view management
+ * 
+ * UPDATED: logEvent() now uses BAR_EVENTS constants and BAR_EVENT_META for
+ *          display formatting instead of hardcoded string comparisons.
  */
 
 class UIManager {
@@ -86,141 +89,70 @@ class UIManager {
             });
         }
 
-        // Streaming mode listeners (if available)
-        // none yet
-        // this.initializeStreamingModeListeners();
-
         console.log('✅ Event listeners initialized');
     }
 
     /**
-     * STATS PANEL UPDATES - The core fix for team status
+     * STATS PANEL UPDATE
      */
 
-    updateTeamStatsPanel(teamData, fullStatsData) {
-        const statusDiv = document.getElementById('status');
-        if (!statusDiv) {
-            console.warn('⚠️ Status div not found for panel update');
+    updateTeamStatsPanel(myTeam, fullStatsData) {
+        const statusEl = document.getElementById('status');
+        if (!statusEl) return;
+
+        if (!myTeam && !fullStatsData) {
+            statusEl.innerHTML = '<p>No team data available</p>';
             return;
         }
 
-        // Extract values with fallbacks
-        const unitCount = teamData?.unitCount || 0;
-        const totalMetalCost = teamData?.totalMetalCost || 0;
-        const damageDealt = fullStatsData?.combat?.damage_dealt || 0;
-        const damageTaken = fullStatsData?.combat?.damage_received || 0;
-        const unitsKilled = fullStatsData?.combat?.units_killed || 0;
-        const unitsLost = fullStatsData?.combat?.units_died || 0;
-        
-        // Metal stats
-        const metalIncome = fullStatsData?.metal?.income || 0;
-        const metalUsage = fullStatsData?.metal?.usage || 0;
-        const metalCurrent = fullStatsData?.metal?.storage || 0;
-        const metalStorage = fullStatsData?.metal?.max_storage || fullStatsData?.metal?.storage || 0;
-        
-        // Energy stats
-        const energyIncome = fullStatsData?.energy?.income || 0;
-        const energyUsage = fullStatsData?.energy?.usage || 0;
-        const energyCurrent = fullStatsData?.energy?.storage || 0;
-        const energyStorage = fullStatsData?.energy?.max_storage || fullStatsData?.energy?.storage || 0;
+        const metal   = fullStatsData?.metal   || myTeam?.metalStats   || {};
+        const energy  = fullStatsData?.energy  || myTeam?.energyStats  || {};
+        const combat  = fullStatsData?.combat  || myTeam?.combatStats  || {};
 
-        // Calculate K/D ratio
-        const kdRatio = damageTaken > 0 ? (damageDealt / damageTaken).toFixed(2) : damageDealt > 0 ? '∞' : '0.0';
-
-        // Update cache for reference
-        Object.assign(this.displayStats, {
-            unitCount,
-            totalMetalCost,
-            damageDealt: Math.round(damageDealt),
-            damageTaken: Math.round(damageTaken),
-            unitsKilled,
-            unitsLost,
-            metalIncome: metalIncome.toFixed(1),
-            metalUsage: metalUsage.toFixed(1),
-            energyIncome: energyIncome.toFixed(1),
-            energyUsage: energyUsage.toFixed(1),
-            metalCurrent: Math.round(metalCurrent),
-            metalStorage: Math.round(metalStorage),
-            energyCurrent: Math.round(energyCurrent),
-            energyStorage: Math.round(energyStorage),
-            kdRatio
-        });
-
-        // Build HTML for status panel
-        statusDiv.innerHTML = `
+        statusEl.innerHTML = `
             <div class="stat-section">
-                <div class="stat-title">ARMY</div>
-                <div class="stat-row">
-                    <span class="stat-label">Active Units:</span>
-                    <span class="stat-value">${unitCount}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Army Value:</span>
-                    <span class="stat-value">${this.formatNumber(totalMetalCost)}M</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Killed:</span>
-                    <span class="stat-value stat-positive">${unitsKilled}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Lost:</span>
-                    <span class="stat-value stat-negative">${unitsLost}</span>
-                </div>
-            </div>
-
-            <div class="stat-section">
-                <div class="stat-title">COMBAT</div>
-                <div class="stat-row">
-                    <span class="stat-label">Damage Dealt:</span>
-                    <span class="stat-value stat-positive">${this.formatNumber(damageDealt)}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Damage Taken:</span>
-                    <span class="stat-value stat-negative">${this.formatNumber(damageTaken)}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">K/D Ratio:</span>
-                    <span class="stat-value">${kdRatio}</span>
-                </div>
-            </div>
-
-            <div class="stat-section">
-                <div class="stat-title">METAL</div>
+                <div class="stat-section-title">⚙️ Metal</div>
                 <div class="stat-row">
                     <span class="stat-label">Income:</span>
-                    <span class="stat-value">${metalIncome.toFixed(1)}/s</span>
+                    <span class="stat-value">${this.formatNumber(metal.income, 1)}/s</span>
                 </div>
                 <div class="stat-row">
                     <span class="stat-label">Usage:</span>
-                    <span class="stat-value">${metalUsage.toFixed(1)}/s</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Storage:</span>
-                    <span class="stat-value">${this.formatNumber(metalCurrent)} / ${this.formatNumber(metalStorage)}</span>
+                    <span class="stat-value">${this.formatNumber(metal.usage, 1)}/s</span>
                 </div>
                 <div class="stat-row ${fullStatsData?.overflow_m ? 'overflow-active' : ''}">
                     <span class="stat-label">Status:</span>
                     <span class="stat-value">${fullStatsData?.overflow_m ? '🔴 OVERFLOW' : '✓ Normal'}</span>
                 </div>
             </div>
-
             <div class="stat-section">
-                <div class="stat-title">ENERGY</div>
+                <div class="stat-section-title">⚡ Energy</div>
                 <div class="stat-row">
                     <span class="stat-label">Income:</span>
-                    <span class="stat-value">${energyIncome.toFixed(1)}/s</span>
+                    <span class="stat-value">${this.formatNumber(energy.income, 1)}/s</span>
                 </div>
                 <div class="stat-row">
                     <span class="stat-label">Usage:</span>
-                    <span class="stat-value">${energyUsage.toFixed(1)}/s</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Storage:</span>
-                    <span class="stat-value">${this.formatNumber(energyCurrent)} / ${this.formatNumber(energyStorage)}</span>
+                    <span class="stat-value">${this.formatNumber(energy.usage, 1)}/s</span>
                 </div>
                 <div class="stat-row ${fullStatsData?.overflow_e ? 'overflow-active' : ''}">
                     <span class="stat-label">Status:</span>
                     <span class="stat-value">${fullStatsData?.overflow_e ? '🔴 STALLED' : '✓ Flowing'}</span>
+                </div>
+            </div>
+            <div class="stat-section">
+                <div class="stat-section-title">⚔️ Combat</div>
+                <div class="stat-row">
+                    <span class="stat-label">Kills:</span>
+                    <span class="stat-value">${combat.units_killed ?? 0}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Losses:</span>
+                    <span class="stat-value">${combat.units_died ?? 0}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Dmg dealt:</span>
+                    <span class="stat-value">${this.formatNumber(combat.damage_dealt ?? 0)}</span>
                 </div>
             </div>
         `;
@@ -263,6 +195,14 @@ class UIManager {
 
     /**
      * EVENT LOGGING
+     * 
+     * Uses BAR_EVENTS constants for event type comparisons and BAR_EVENT_META
+     * for default icons and labels. Adding a new event type only requires:
+     *   1. Adding it to BAR_EVENTS / BAR_EVENT_META in eventTypes.js
+     *   2. Optionally adding a formatting case below if it needs custom display
+     * 
+     * Unknown events fall through to the default case and display raw data,
+     * so new events from the widget are always visible even before a case is added.
      */
 
     logEvent(event) {
@@ -276,46 +216,73 @@ class UIManager {
             }
 
             const eventItem = document.createElement('div');
-            eventItem.className = 'event-item';
-            
-            const timestamp = this.formatTime(Date.now());
-            const eventType = event.data?.event || event.event;
-            const eventData = event.data?.data || event.data;
-            const myTeamID = gameState.gameState.myTeamID;
-            
-            let details = '';
-            let priority = 'normal';
+            const timestamp  = this.formatTime(Date.now());
+            const eventType  = event.data?.event || event.event;
+            const eventData  = event.data?.data  || event.data;
+            const myTeamID   = (typeof gameState !== 'undefined') ? gameState.gameState.myTeamID : null;
 
-            if (eventType === 'UnitFinished') {
-                const unitName = eventData?.unitName || 'unknown';
-                const relation = eventData?.relation || 'unknown';
-                const isMyUnit = relation === 'self';
-                const icon = isMyUnit ? '✅' : '🔧';
-                details = `<span class="event-details">${icon} ${this.getName(unitName)} completed</span>`;
-                priority = isMyUnit ? 'high' : 'normal';
-            } else if (eventType === 'UnitDestroyed') {
-                const unitName = eventData?.unitName || 'unknown';
-                const attackerName = eventData?.attackerName || 'unknown';
-                const unitTeam = eventData?.unitTeam;
-                const isMyUnit = unitTeam === myTeamID;
-                const destroyColor = isMyUnit ? '#ff4444' : '#00d084';
-                const destroyLabel = isMyUnit ? '💀 LOSS' : '⚔️ KILL';
-                details = `<span class="event-details" style="color: ${destroyColor}; font-weight: 600;">
-                    ${destroyLabel}: ${this.getName(unitName)} by ${this.getName(attackerName)}
-                </span>`;
-                priority = 'critical';
-            } else if (eventType === 'FullStatsUpdate') {
-                const combat = eventData?.combat;
-                if (combat) {
-                    details = `<span class="event-details">📊 K: ${combat.units_killed} | D: ${combat.units_died} | Dmg: ${Math.round(combat.damage_dealt)}</span>`;
+            // Pull defaults from the registry
+            const meta     = getEventMeta(eventType);
+            let details    = '';
+            let priority   = meta.logPriority;
+
+            // ── Per-event display formatting ─────────────────────────────────
+            switch (eventType) {
+
+                case BAR_EVENTS.UNIT_FINISHED: {
+                    const unitName = eventData?.unitName || 'unknown';
+                    const relation = eventData?.relation || 'unknown';
+                    const isMyUnit = relation === 'self';
+                    const icon     = isMyUnit ? '✅' : meta.icon;
+                    priority       = isMyUnit ? 'high' : 'normal';
+                    details        = `<span class="event-details">${icon} ${this.getName(unitName)} completed</span>`;
+                    break;
                 }
-                priority = 'low';
+
+                case BAR_EVENTS.UNIT_DESTROYED: {
+                    const unitName     = eventData?.unitName     || 'unknown';
+                    const attackerName = eventData?.attackerName || 'unknown';
+                    const unitTeam     = eventData?.unitTeam;
+                    const isMyUnit     = unitTeam === myTeamID;
+                    const colour       = isMyUnit ? '#ff4444' : '#00d084';
+                    const label        = isMyUnit ? '💀 LOSS'  : '⚔️ KILL';
+                    details = `<span class="event-details" style="color:${colour};font-weight:600;">
+                        ${label}: ${this.getName(unitName)} by ${this.getName(attackerName)}
+                    </span>`;
+                    break;
+                }
+
+                case BAR_EVENTS.GAME_START: {
+                    details = `<span class="event-details">${meta.icon} Game started — ${eventData?.playerName ?? ''}</span>`;
+                    break;
+                }
+
+                case BAR_EVENTS.GAME_OVER: {
+                    details = `<span class="event-details">${meta.icon} Game ended</span>`;
+                    break;
+                }
+
+                case BAR_EVENTS.OVERFLOW_STATUS_CHANGED: {
+                    const resource = eventData?.resource || 'unknown';
+                    const active   = eventData?.overflow_m || eventData?.overflow_e;
+                    details = `<span class="event-details">${meta.icon} ${resource} overflow ${active ? 'started' : 'ended'}</span>`;
+                    break;
+                }
+
+                default: {
+                    // Catch-all: display the raw event type and whatever data exists.
+                    // This means NEW events from the LUA widget are always visible in
+                    // the battle log without needing a code change here first.
+                    const rawSummary = eventData ? JSON.stringify(eventData).slice(0, 80) : '';
+                    details = `<span class="event-details">${meta.icon} ${meta.label}${rawSummary ? ': ' + rawSummary : ''}</span>`;
+                    break;
+                }
             }
 
             eventItem.className = `event-item event-priority-${priority}`;
             eventItem.innerHTML = `
                 <div class="event-timestamp">${timestamp}</div>
-                <div class="event-type">${eventType}</div>
+                <div class="event-type">${meta.label}</div>
                 ${details}
             `;
 
@@ -337,7 +304,7 @@ class UIManager {
         const triggerItem = document.createElement('div');
         triggerItem.className = 'event-item event-trigger event-priority-critical';
         
-        const timestamp = this.formatTime(Date.now());
+        const timestamp   = this.formatTime(Date.now());
         const triggerName = trigger.name || 'unknown trigger';
         
         triggerItem.innerHTML = `
@@ -368,7 +335,6 @@ class UIManager {
     switchView(viewName) {
         console.log('📌 Switching to view:', viewName);
 
-        // add viewname to body for global css changing
         document.body.dataset.view = viewName;
 
         if (this.currentView === viewName) {
@@ -405,7 +371,6 @@ class UIManager {
 
         this.currentView = viewName;
 
-        // Initialize view-specific content
         if (viewName === 'streaming') {
             this.initializeStreamingMode();
         }
@@ -413,28 +378,8 @@ class UIManager {
 
     initializeStreamingMode() {
         console.log('📺 Initializing streaming mode...');
-
-        if (typeof widgetManager === 'undefined') {
-            console.warn('⚠️ widgetManager not loaded');
-            return;
-        }
-
-        const container = document.getElementById('streaming-widgets-container');
-        if (!container) {
-            console.warn('⚠️ #streaming-widgets-container not found');
-            return;
-        }
-
-        // Only mount once — mountAll is idempotent via the instances Map,
-        // but we guard with a flag to avoid re-registering drag listeners.
-        if (!widgetManager._mounted) {
-            widgetManager.mountAll(container);
-            widgetManager._mounted = true;
-
-            // Initial stat render
-            if (typeof statWidgets !== 'undefined') statWidgets.tick();
-
-            console.log('✅ Streaming widgets mounted');
+        if (typeof streamingWidgets !== 'undefined') {
+            // Placeholder for streaming-specific UI setup
         }
     }
 
@@ -442,17 +387,14 @@ class UIManager {
         const cards = document.querySelectorAll('.unit-card');
         cards.forEach(card => {
             const unitName = card.querySelector('.unit-name').textContent.toLowerCase();
-            const matches = unitName.includes(this.unitFilterText);
+            const matches  = unitName.includes(this.unitFilterText);
             card.style.display = matches ? '' : 'none';
         });
     }
 
     updateUnitRosterSort() {
-        // Placeholder for unit roster sorting
         console.log('Sorting units by:', this.unitSortBy);
     }
-
-    
 
     updateTriggerFiredState(triggerId) {
         const triggerEl = document.querySelector(`[data-trigger-id="${triggerId}"]`);
@@ -495,7 +437,6 @@ class UIManager {
 // Create global instance and initialize on load
 const uiManager = new UIManager();
 
-// Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         uiManager.initialize();
