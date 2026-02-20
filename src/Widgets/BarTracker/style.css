@@ -805,11 +805,29 @@ body[data-view="streaming"] {
     outline-color: rgba(0, 180, 255, 0.9);
     box-shadow: 0 0 18px rgba(0, 180, 255, 0.2);
 }
+.wm-type-trigger .wm-inner {
+    min-width: 13em;
+    max-width: 26em;
+    pointer-events: none;   /* ← ADD THIS */
+}
+.wt-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    pointer-events: none;   /* ← ADD THIS */
+}
 
 /* Disabled widgets in edit mode: orange dashed to distinguish from enabled */
 .wm-widget.wm-disabled.wm-show-disabled.wm-editing {
     outline: 1px dashed rgba(255, 107, 53, 0.55);
     outline-offset: 4px;
+}
+
+.wm-type-trigger .wm-inner {
+    min-width: 13em;
+    max-width: 26em;
+    min-height: 2.5em;      /* ← ADD: keeps widget grabbable when stack is empty */
+    pointer-events: none;   /* ← from previous fix */
 }
 
 /* ── Scale hint badge (scroll to scale) ──────────────────────────────────── */
@@ -1044,3 +1062,4 @@ body[data-view="streaming"] {
     80%  { opacity: 1; }
     100% { opacity: 0; }
 }
+
