@@ -117,6 +117,7 @@ class GameStateStore {
             damageTaken: 0,
             damageDealt: 0,
             killCount: 0,
+            metalKilled: 0,      
             assistCount: 0,
             lastDamagedAt: null,
             lastDamagedBy: null,
@@ -145,59 +146,74 @@ class GameStateStore {
     destroyUnit(unitID, attackerID, attackerTeam) {
         const unit = this.units.get(unitID);
         if (!unit) return null;
-        
+
         unit.destroyed = true;
         unit.destroyedAt = this.gameState.gameTime;
         unit.destroyedBy = attackerID;
         unit.destroyedByTeam = attackerTeam;
-        
-        // Update team stats
+
+        // Update victim's team stats
         if (this.teams.has(unit.teamID)) {
             const team = this.teams.get(unit.teamID);
             team.unitCount -= 1;
             team.totalMetalCost -= unit.metalCost;
             team.lostCount += 1;
         }
-        
+
+        // Update attacker unit stats — THIS IS THE KEY FIX
+        if (attackerID) {
+            const attacker = this.units.get(attackerID);
+            if (attacker) {
+                attacker.killCount += 1;
+                attacker.metalKilled = (attacker.metalKilled || 0) + unit.metalCost;
+            }
+        }
+
+        // Update attacker's team stats
         if (attackerTeam && this.teams.has(attackerTeam)) {
             const attackerTeamData = this.teams.get(attackerTeam);
             attackerTeamData.killedCount += 1;
+            attackerTeamData.metalKilled = (attackerTeamData.metalKilled || 0) + unit.metalCost;
         }
-        
+
         return unit;
     }
 
     damageUnit(unitID, damage, attackerID, attackerTeam) {
         const unit = this.units.get(unitID);
         if (!unit) return null;
-        
+
         unit.damageTaken += damage;
         unit.lastDamagedAt = this.gameState.gameTime;
         unit.lastDamagedBy = attackerID;
         unit.inCombat = true;
-        
-        // Update team stats
-        if (this.teams.has(attackerTeam)) {
-            const team = this.teams.get(attackerTeam);
-            team.totalDamageDealt += damage;
+
+        // Update attacker unit stats — THIS IS THE KEY FIX
+        if (attackerID) {
+            const attacker = this.units.get(attackerID);
+            if (attacker) {
+                attacker.damageDealt += damage;
+            }
         }
-        
+
+        // Update team aggregates
+        if (attackerTeam && this.teams.has(attackerTeam)) {
+            this.teams.get(attackerTeam).totalDamageDealt += damage;
+        }
         if (this.teams.has(unit.teamID)) {
-            const team = this.teams.get(unit.teamID);
-            team.totalDamageTaken += damage;
+            this.teams.get(unit.teamID).totalDamageTaken += damage;
         }
-        
-        // Track damage history for trend analysis
+
         this.damageHistory.push({
             timestamp: Date.now(),
             frame: this.gameState.frame,
             attacker: attackerID,
-            attackerTeam: attackerTeam,
+            attackerTeam,
             victim: unitID,
             victimTeam: unit.teamID,
-            damage: damage
+            damage
         });
-        
+
         return unit;
     }
 
@@ -260,11 +276,20 @@ class GameStateStore {
         ).length;
     }
 
-    // Get units killed by a specific unit
+    getKillCount(unitID) {
+        const unit = this.units.get(unitID);
+        return unit ? unit.killCount : 0;
+    }
+
+    // O(n), just in case needed - try and use getKillCount for just numbers
     getKilledBy(unitID) {
-        return Array.from(this.units.values()).filter(u => 
-            u.destroyedBy === unitID
-        );
+        return Array.from(this.units.values()).filter(u => u.destroyedBy === unitID);
+    }
+
+    // Replace getDamageDealtBy with O(1) lookup
+    getDamageDealtBy(unitID) {
+        const unit = this.units.get(unitID);
+        return unit ? unit.damageDealt : 0;
     }
 
     // Get damage dealt by unit
