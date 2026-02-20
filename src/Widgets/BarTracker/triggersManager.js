@@ -16,6 +16,19 @@
  * ✅ Console debugging for troubleshooting
  */
 
+async function apiFetch(url, options = {}) {
+    const headers = options.headers || {};
+    
+    if (window.csrfToken) {
+        headers['X-CSRF-Token'] = window.csrfToken;
+    }
+
+    return fetch(url, {
+        ...options,
+        headers
+    });
+}
+
 class TriggersManager {
     constructor() {
         this.soundpacks = [];
@@ -110,6 +123,7 @@ class TriggersManager {
 
         window.triggersManagerListenersAttached = true;
     }
+
 
     /**
      * SOUNDPACK MANAGEMENT
@@ -488,7 +502,7 @@ class TriggersManager {
 
             console.log(`📤 Uploading to /soundapi/soundpack/upload (soundpack: ${this.activeSoundpackId}, trigger: ${triggerId})`);
 
-            const response = await fetch('/soundapi/soundpack/upload', {
+            const response = await apiFetch('/soundapi/soundpack/upload', {
                 method: 'POST',
                 body: formData
             });
@@ -596,7 +610,7 @@ class TriggersManager {
             formData.append('soundpack_id', this.activeSoundpackId);
             formData.append('trigger_id', triggerId);
             
-            const response = await fetch('/soundapi/soundpack/test-audio', {
+            const response = await apiFetch('/soundapi/soundpack/test-audio', {
                 method: 'POST',
                 body: formData
             });
@@ -632,7 +646,7 @@ class TriggersManager {
             formData.append('soundpack_id', this.activeSoundpackId);
             formData.append('trigger_id', triggerId);
 
-            const response = await fetch('/soundapi/soundpack/removeaudio', {
+            const response = await apiFetch('/soundapi/soundpack/removeaudio', {
                 method: 'POST',
                 body: formData
             });
@@ -671,7 +685,7 @@ class TriggersManager {
             const formData = new FormData();
             formData.append('title', title);
 
-            const response = await fetch('/soundapi/soundpack/create', {
+            const response = await apiFetch('/soundapi/soundpack/create', {
                 method: 'POST',
                 body: formData
             });
@@ -703,7 +717,7 @@ class TriggersManager {
             const formData = new FormData();
             formData.append('soundpack_id', soundpackId);
 
-            const response = await fetch('/soundapi/soundpack/remove', {
+            const response = await apiFetch('/soundapi/soundpack/remove', {
                 method: 'POST',
                 body: formData
             });

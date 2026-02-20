@@ -301,23 +301,7 @@ class TriggerEngine {
      * SOUNDPACK MANAGEMENT
      */
 
-    /**
-     * Load a soundpack - fetch trigger->audio mappings from server
-     */
-
-    async loadSoundpack(soundpackId) {
-        try {
-            const response = await fetch(`/soundapi/soundpack/load?soundpack_id=${soundpackId}`);
-            const result = await response.json();
-            if (result.success) {
-                this.soundpacks.set(soundpackId, result.data.triggers);
-                this.activeSoundpackId = soundpackId;
-                this.activeSoundpackIsOwner = result.data.is_owner; 
-                // REMOVED: Redundant dispatch here
-                return result.data;
-            }
-        } catch (err) { console.error('Error loading soundpack:', err); }
-    }
+    
 
     async switchSoundpack(soundpackId) {
         try {

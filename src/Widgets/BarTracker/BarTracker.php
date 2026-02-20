@@ -3,6 +3,7 @@ namespace bobmitch\bar\Widgets\BarTracker;
 
 Use HoltBosse\Alba\Core\{CMS,Widget};
 Use HoltBosse\DB\DB;
+use bobmitch\bar\Helpers\CSRF;
 
 class BarTracker extends Widget {
 
@@ -18,6 +19,10 @@ class BarTracker extends Widget {
             $uuid = $user->uuid ?? 'unknown-uuid';
             echo "<script>window.uuid = " . json_encode($uuid) . ";</script>";
         }
+
+        $csrf_token = CSRF::getToken();
+        echo "<script>window.csrfToken = " . json_encode($csrf_token) . ";</script>";
+        
 		?>
 
 		<div class="bar-widget-container">
@@ -77,7 +82,6 @@ class BarTracker extends Widget {
 							<!-- UUID Display -->
 							<div id="tokenstuff" style="display:none;">
 								<?php 
-								$uuid = DB::fetch('select uuid from users where id=?', $_SESSION['user_id'] ?? 0)->uuid ?? 'unknown-uuid';
 								echo "<textarea>" . htmlspecialchars($uuid) . "</textarea>";
 								?>
 							</div>

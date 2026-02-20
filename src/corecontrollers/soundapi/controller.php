@@ -18,6 +18,7 @@ namespace bartracker\controllers\soundpack;
 use HoltBosse\Alba\Core\CMS;
 use HoltBosse\Form\Input;
 use HoltBosse\DB\DB;
+use bobmitch\bar\Helpers\CSRF;
 
 class SoundpackController {
     
@@ -62,6 +63,18 @@ class SoundpackController {
      */
     private function route() {
         header('Content-Type: application/json');
+
+        // Mutating actions require CSRF validation
+        $mutatingActions = ['create', 'upload', 'test-audio', 'remove', 'removeaudio'];
+
+        if (in_array($this->action, $mutatingActions) && $this->method === 'POST') {
+            if (!CSRF::validate()) {
+                $this->error('Invalid or missing CSRF token', 403);
+                // echo json_encode($this->response);
+                return;
+            }
+        }
+
 
         switch ($this->action) {
             case 'create':
