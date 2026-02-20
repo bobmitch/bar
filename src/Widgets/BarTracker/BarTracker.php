@@ -156,21 +156,28 @@ class BarTracker extends Widget {
 				<!-- ========== STREAMING VIEW ========== -->
 				<section id="streaming-view" class="view-section">
 
-					<!-- Slim HUD bar — always visible in streaming mode -->
-					<div id="wm-hud">
-						<span class="wm-hud-brand">BAR · STREAM</span>
-						<span class="wm-hud-spacer"></span>
-						<span class="wm-hud-hints">scroll=scale &nbsp;·&nbsp; dblclick=toggle &nbsp;·&nbsp; middle click background=show hidden &nbsp;·&nbsp; esc=back</span>
-						<button class="wm-hud-back" id="wm-back-btn">← BACK</button>
-					</div>
+                    <!-- Slim HUD bar — fades in on mouse movement, auto-hides after 2.5 s idle -->
+                    <div id="wm-hud">
+                        <span class="wm-hud-brand">BAR · STREAM</span>
+                        <span class="wm-hud-spacer"></span>
+                        <span class="wm-hud-hints">
+                            move mouse = edit mode &nbsp;·&nbsp;
+                            scroll = scale &nbsp;·&nbsp;
+                            dblclick widget = toggle &nbsp;·&nbsp;
+                            middle click = lock/unlock &nbsp;·&nbsp;
+                            right click = back
+                        </span>
+                        <button id="wm-lock-btn">🔓 LOCK</button>
+                        <button class="wm-hud-back" id="wm-back-btn">← BACK</button>
+                    </div>
 
-					<!-- Widget mount point -->
-					<div id="streaming-widgets-container"></div>
+                    <!-- Widget mount point -->
+                    <div id="streaming-widgets-container"></div>
 
-					<!-- Shown when Space reveals disabled widgets -->
-					<div id="wm-disabled-hint">SHOWING HIDDEN WIDGETS</div>
+                    <!-- Shown when edit mode is active -->
+                    <div id="wm-disabled-hint">EDIT MODE — HIDDEN WIDGETS VISIBLE</div>
 
-				</section>
+                </section>
 
 			</main>
 		</div>
