@@ -150,7 +150,7 @@ class WidgetManager {
             state.enabled = !state.enabled;
             this._applyEnabled(el, state);
             this._saveLayout();
-            this._flashToast(state.enabled ? '✓ Widget enabled' : '✕ Widget hidden — Space to reveal');
+            this._flashToast(state.enabled ? '✓ Widget enabled' : '✕ Widget hidden — middle-click to reveal');
         });
 
         el.addEventListener('wheel', (e) => {
@@ -173,39 +173,45 @@ class WidgetManager {
     }
 
     _bindGlobalKeys() {
-        document.addEventListener('keydown', (e) => {
+        // Right-click anywhere on the streaming canvas -> back to standard view
+        document.addEventListener('contextmenu', (e) => {
             if (document.body.dataset.view !== 'streaming') return;
-
-            if (e.code === 'Space' && !e.target.matches('input,textarea,select')) {
-                e.preventDefault();
-                this.showDisabled = !this.showDisabled;
-
-                // Toggle HUD visibility
-                const hud = document.getElementById('wm-hud');
-                if (hud) hud.classList.toggle('wm-hud-visible', this.showDisabled);
-
-                // Update all disabled widgets
-                for (const [, inst] of this.instances) {
-                    if (!inst.state.enabled) {
-                        inst.el.classList.toggle('wm-show-disabled', this.showDisabled);
-                        inst.el.style.display = this.showDisabled ? '' : 'none';
-                        inst.el.style.pointerEvents = this.showDisabled ? 'all' : 'none';
-                    }
-                }
-
-                const hint = document.getElementById('wm-disabled-hint');
-                if (hint) hint.classList.toggle('wm-hint-visible', this.showDisabled);
-            }
-
-            if (e.code === 'Escape') {
-                if (typeof uiManager !== 'undefined') uiManager.switchView('standard');
-            }
-
-            // T key — fire a test trigger card into the trigger widget
-            if (e.code === 'KeyT' && !e.target.matches('input,textarea,select')) {
-                this.emitTrigger({ name: '⚡ TEST TRIGGER', id: 'test' });
-            }
+            e.preventDefault();
+            if (typeof uiManager !== 'undefined') uiManager.switchView('standard');
         });
+
+        // Middle-click anywhere -> toggle show-hidden-widgets mode
+        document.addEventListener('mousedown', (e) => {
+            if (document.body.dataset.view !== 'streaming') return;
+            if (e.button !== 1) return;
+            e.preventDefault();
+            this._toggleShowDisabled();
+        });
+
+        // Double-click on the canvas background (not on a widget) -> test trigger
+        document.addEventListener('dblclick', (e) => {
+            if (document.body.dataset.view !== 'streaming') return;
+            if (e.target.closest('.wm-widget')) return;
+            this.emitTrigger({ name: 'TEST TRIGGER', id: 'test' });
+        });
+    }
+
+    _toggleShowDisabled() {
+        this.showDisabled = !this.showDisabled;
+
+        const hud = document.getElementById('wm-hud');
+        if (hud) hud.classList.toggle('wm-hud-visible', this.showDisabled);
+
+        for (const [, inst] of this.instances) {
+            if (!inst.state.enabled) {
+                inst.el.classList.toggle('wm-show-disabled', this.showDisabled);
+                inst.el.style.display       = this.showDisabled ? '' : 'none';
+                inst.el.style.pointerEvents = this.showDisabled ? 'all' : 'none';
+            }
+        }
+
+        const hint = document.getElementById('wm-disabled-hint');
+        if (hint) hint.classList.toggle('wm-hint-visible', this.showDisabled);
     }
 
     _saveLayout() {

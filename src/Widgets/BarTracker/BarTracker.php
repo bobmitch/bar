@@ -156,7 +156,7 @@ class BarTracker extends Widget {
 					<div id="wm-hud">
 						<span class="wm-hud-brand">BAR · STREAM</span>
 						<span class="wm-hud-spacer"></span>
-						<span class="wm-hud-hints">scroll=scale &nbsp;·&nbsp; dblclick=toggle &nbsp;·&nbsp; space=show hidden &nbsp;·&nbsp; esc=back</span>
+						<span class="wm-hud-hints">scroll=scale &nbsp;·&nbsp; dblclick=toggle &nbsp;·&nbsp; middle click background=show hidden &nbsp;·&nbsp; esc=back</span>
 						<button class="wm-hud-back" id="wm-back-btn">← BACK</button>
 					</div>
 
