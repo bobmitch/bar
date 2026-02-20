@@ -151,7 +151,21 @@ class BarTracker extends Widget {
 
 				<!-- ========== STREAMING VIEW ========== -->
 				<section id="streaming-view" class="view-section">
+
+					<!-- Slim HUD bar — always visible in streaming mode -->
+					<div id="wm-hud">
+						<span class="wm-hud-brand">BAR · STREAM</span>
+						<span class="wm-hud-spacer"></span>
+						<span class="wm-hud-hints">scroll=scale &nbsp;·&nbsp; dblclick=toggle &nbsp;·&nbsp; space=show hidden &nbsp;·&nbsp; esc=back</span>
+						<button class="wm-hud-back" id="wm-back-btn">← BACK</button>
+					</div>
+
+					<!-- Widget mount point -->
 					<div id="streaming-widgets-container"></div>
+
+					<!-- Shown when Space reveals disabled widgets -->
+					<div id="wm-disabled-hint">SHOWING HIDDEN WIDGETS</div>
+
 				</section>
 
 			</main>
@@ -169,6 +183,11 @@ class BarTracker extends Widget {
 		<!-- Core Game Systems -->
 		<script src="/src/Widgets/BarTracker/gameStateStore.js"></script>
 		<script src="/src/Widgets/BarTracker/triggerEngine.js"></script>
+
+		<!-- Widget framework — must load before uiManager and barWidgets -->
+		<script src="/src/Widgets/BarTracker/widgetManager.js"></script>
+
+		<script src="/src/Widgets/BarTracker/barWidgets.js"></script>
 
 		<!-- UI Managers -->
 		<script src="/src/Widgets/BarTracker/uiManager.js"></script>
@@ -291,6 +310,22 @@ class BarTracker extends Widget {
 						}
 					}, 500);
 				}
+
+				// Initialize streaming widget layer
+				if (window.widgetManager) {
+					const container = document.getElementById('streaming-widgets-container');
+					if (container) {
+						widgetManager.mountAll(container);
+						console.log('✅ Widget manager mounted');
+					}
+				}
+
+				// Back button wires to uiManager
+				const wmBack = document.getElementById('wm-back-btn');
+				if (wmBack) {
+					wmBack.addEventListener('click', () => uiManager.switchView('standard'));
+				}
+
 			});
 		</script>
 

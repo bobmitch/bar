@@ -413,8 +413,28 @@ class UIManager {
 
     initializeStreamingMode() {
         console.log('📺 Initializing streaming mode...');
-        if (typeof streamingWidgets !== 'undefined') {
-            // do nothing for now - placeholder for future streaming-specific UI setup
+
+        if (typeof widgetManager === 'undefined') {
+            console.warn('⚠️ widgetManager not loaded');
+            return;
+        }
+
+        const container = document.getElementById('streaming-widgets-container');
+        if (!container) {
+            console.warn('⚠️ #streaming-widgets-container not found');
+            return;
+        }
+
+        // Only mount once — mountAll is idempotent via the instances Map,
+        // but we guard with a flag to avoid re-registering drag listeners.
+        if (!widgetManager._mounted) {
+            widgetManager.mountAll(container);
+            widgetManager._mounted = true;
+
+            // Initial stat render
+            if (typeof statWidgets !== 'undefined') statWidgets.tick();
+
+            console.log('✅ Streaming widgets mounted');
         }
     }
 
