@@ -99,11 +99,20 @@ class WidgetManager {
     }
 
     _applyEnabled(el, state) {
-        el.classList.toggle('wm-disabled', !state.enabled);
-        if (!state.enabled && !this.showDisabled) {
-            el.style.display = 'none';
+        if (state.enabled) {
+            // Fully restore — remove ALL disabled-related classes and inline overrides
+            el.classList.remove('wm-disabled', 'wm-show-disabled');
+            el.style.display  = '';
+            el.style.opacity  = '';
+            el.style.pointerEvents = '';
         } else {
-            el.style.display = '';
+            // Disabled: always add wm-disabled; visibility depends on showDisabled mode
+            el.classList.add('wm-disabled');
+            el.classList.toggle('wm-show-disabled', this.showDisabled);
+            el.style.display = this.showDisabled ? '' : 'none';
+            // Inline pointer-events so dblclick still works when revealed
+            el.style.pointerEvents = this.showDisabled ? 'all' : 'none';
+            el.style.opacity = '';  // let CSS classes control opacity
         }
     }
 
@@ -170,18 +179,31 @@ class WidgetManager {
             if (e.code === 'Space' && !e.target.matches('input,textarea,select')) {
                 e.preventDefault();
                 this.showDisabled = !this.showDisabled;
+
+                // Toggle HUD visibility
+                const hud = document.getElementById('wm-hud');
+                if (hud) hud.classList.toggle('wm-hud-visible', this.showDisabled);
+
+                // Update all disabled widgets
                 for (const [, inst] of this.instances) {
                     if (!inst.state.enabled) {
-                        inst.el.style.display = this.showDisabled ? '' : 'none';
                         inst.el.classList.toggle('wm-show-disabled', this.showDisabled);
+                        inst.el.style.display = this.showDisabled ? '' : 'none';
+                        inst.el.style.pointerEvents = this.showDisabled ? 'all' : 'none';
                     }
                 }
+
                 const hint = document.getElementById('wm-disabled-hint');
                 if (hint) hint.classList.toggle('wm-hint-visible', this.showDisabled);
             }
 
             if (e.code === 'Escape') {
                 if (typeof uiManager !== 'undefined') uiManager.switchView('standard');
+            }
+
+            // T key — fire a test trigger card into the trigger widget
+            if (e.code === 'KeyT' && !e.target.matches('input,textarea,select')) {
+                this.emitTrigger({ name: '⚡ TEST TRIGGER', id: 'test' });
             }
         });
     }
