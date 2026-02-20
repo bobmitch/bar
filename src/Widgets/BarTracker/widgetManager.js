@@ -23,6 +23,13 @@
  *     ALL widgets get a dashed outline so you can find them
  *   • Middle-click anywhere → toggle LOCK (keeps edit mode on permanently
  *     regardless of idle timeout — middle-click again to unlock)
+ *
+ * Snap-to-edge:
+ *   • While dragging, each widget's left/centre/right and top/centre/bottom
+ *     edges are compared against all other widgets' edges.
+ *   • When within SNAP_THRESHOLD px, the widget snaps to exact alignment
+ *     and a cyan guide line appears on the matching axis.
+ *   • Guide lines clear on mouseup.
  */
 class WidgetManager {
     constructor() {
@@ -36,11 +43,12 @@ class WidgetManager {
         this._editLocked  = false;   // true when user has middle-clicked to pin
         this._idleTimer   = null;
 
-        this.STORAGE_KEY    = 'bar-widget-layout-v1';
-        this.MIN_SCALE      = 0.5;
-        this.MAX_SCALE      = 2.0;
-        this.SCALE_STEP     = 0.1;
+        this.STORAGE_KEY     = 'bar-widget-layout-v1';
+        this.MIN_SCALE       = 0.5;
+        this.MAX_SCALE       = 2.0;
+        this.SCALE_STEP      = 0.1;
         this.IDLE_TIMEOUT_MS = 2500; // ms of no mouse movement → sleep
+        this.SNAP_THRESHOLD  = 10;   // px — edge proximity that triggers a snap
 
         this._loadLayout();
         this._bindGlobalEvents();
@@ -61,6 +69,7 @@ class WidgetManager {
 
     mountAll(containerEl) {
         this.container = containerEl;
+        this._initSnapGuides();
         for (const [id, def] of this.widgets) {
             this._mountWidget(id, def);
         }
@@ -292,16 +301,23 @@ class WidgetManager {
 
         const onMove = (e) => {
             if (!dragging) return;
-            state.x = sx + (e.clientX - ox);
-            state.y = sy + (e.clientY - oy);
+            const rawX = sx + (e.clientX - ox);
+            const rawY = sy + (e.clientY - oy);
+            const { x, y, guideX, guideY } = this._applySnap(id, rawX, rawY);
+            state.x = x;
+            state.y = y;
             this._applyPosition(el, state);
+            this._updateGuides(guideX, guideY);
         };
+
         const onUp = () => {
             if (!dragging) return;
             dragging = false;
             el.classList.remove('wm-dragging');
+            this._clearGuides();
             this._saveLayout();
         };
+
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
 
@@ -335,6 +351,127 @@ class WidgetManager {
                 ? '✓ Widget enabled'
                 : '✕ Widget hidden — move mouse to reveal');
         });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SNAP-TO-EDGE
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Create the two guide line divs (one vertical, one horizontal).
+     * Called once in mountAll() — reused for every subsequent drag.
+     */
+    _initSnapGuides() {
+        this._guideV = document.createElement('div');
+        this._guideV.className = 'wm-snap-guide wm-snap-guide-v';
+        this.container.appendChild(this._guideV);
+
+        this._guideH = document.createElement('div');
+        this._guideH.className = 'wm-snap-guide wm-snap-guide-h';
+        this.container.appendChild(this._guideH);
+    }
+
+    /**
+     * Collect all X and Y snap lines from every widget except the one
+     * currently being dragged. Each widget contributes 3 lines per axis:
+     * left/centre/right and top/centre/bottom.
+     */
+    _getSnapLines(excludeId) {
+        const xLines = [];
+        const yLines = [];
+
+        for (const [id, inst] of this.instances) {
+            if (id === excludeId) continue;
+            if (inst.el.style.display === 'none') continue;
+            if (!inst.state.enabled) continue;
+
+            const r  = inst.el.getBoundingClientRect();
+            const cr = this.container.getBoundingClientRect();
+
+            const left   = r.left   - cr.left;
+            const top    = r.top    - cr.top;
+            const right  = r.right  - cr.left;
+            const bottom = r.bottom - cr.top;
+
+            xLines.push(left, left + r.width  / 2, right);
+            yLines.push(top,  top  + r.height / 2, bottom);
+        }
+
+        return { xLines, yLines };
+    }
+
+    /**
+     * Given a raw (unsnapped) candidate position, check all edges of the
+     * dragged widget against the collected snap lines. Returns the (possibly
+     * adjusted) position plus guide line coordinates for display.
+     */
+    _applySnap(id, rawX, rawY) {
+        const el = this.instances.get(id).el;
+        const r  = el.getBoundingClientRect();
+        const w  = r.width;
+        const h  = r.height;
+        const T  = this.SNAP_THRESHOLD;
+
+        const { xLines, yLines } = this._getSnapLines(id);
+
+        let snappedX = rawX, guideX = null;
+        let snappedY = rawY, guideY = null;
+
+        // ── X axis: left edge, centre, right edge ───────────────────────────
+        let bestX = T + 1;
+        for (const offset of [0, w / 2, w]) {
+            for (const target of xLines) {
+                const d = Math.abs((rawX + offset) - target);
+                if (d < bestX) {
+                    bestX    = d;
+                    snappedX = target - offset;
+                    guideX   = target;
+                }
+            }
+        }
+        if (bestX > T) { snappedX = rawX; guideX = null; }
+
+        // ── Y axis: top edge, centre, bottom edge ───────────────────────────
+        let bestY = T + 1;
+        for (const offset of [0, h / 2, h]) {
+            for (const target of yLines) {
+                const d = Math.abs((rawY + offset) - target);
+                if (d < bestY) {
+                    bestY    = d;
+                    snappedY = target - offset;
+                    guideY   = target;
+                }
+            }
+        }
+        if (bestY > T) { snappedY = rawY; guideY = null; }
+
+        return { x: snappedX, y: snappedY, guideX, guideY };
+    }
+
+    /**
+     * Position and show/hide the guide lines.
+     * @param {number|null} guideX  — container-relative px for vertical line
+     * @param {number|null} guideY  — container-relative px for horizontal line
+     */
+    _updateGuides(guideX, guideY) {
+        if (guideX !== null) {
+            this._guideV.style.left = `${guideX}px`;
+            this._guideV.classList.add('wm-snap-active');
+        } else {
+            this._guideV.classList.remove('wm-snap-active');
+        }
+        if (guideY !== null) {
+            this._guideH.style.top = `${guideY}px`;
+            this._guideH.classList.add('wm-snap-active');
+        } else {
+            this._guideH.classList.remove('wm-snap-active');
+        }
+    }
+
+    /** Hide both guide lines — called on mouseup. */
+    _clearGuides() {
+        this._guideV.classList.remove('wm-snap-active');
+        this._guideH.classList.remove('wm-snap-active');
     }
 
     // ─────────────────────────────────────────────────────────────────────────

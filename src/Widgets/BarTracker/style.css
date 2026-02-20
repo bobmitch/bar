@@ -855,6 +855,57 @@ body[data-view="streaming"] {
     100% { opacity: 0; }
 }
 
+/* snap */
+
+/* ── Snap guide lines ────────────────────────────────────────────────────────
+   Shown during drag when a widget edge aligns with another widget's edge.
+   Two divs (one V, one H) are created once by JS and reused every drag.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.wm-snap-guide {
+    position: absolute;
+    pointer-events: none;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.08s ease;
+}
+
+.wm-snap-guide.wm-snap-active {
+    opacity: 1;
+}
+
+/* Vertical guide — shown when X edges align */
+.wm-snap-guide-v {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(0, 217, 255, 0.15) 8%,
+        rgba(0, 217, 255, 0.7)  50%,
+        rgba(0, 217, 255, 0.15) 92%,
+        transparent 100%
+    );
+    box-shadow: 0 0 6px rgba(0, 217, 255, 0.4);
+}
+
+/* Horizontal guide — shown when Y edges align */
+.wm-snap-guide-h {
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+        to right,
+        transparent 0%,
+        rgba(0, 217, 255, 0.15) 8%,
+        rgba(0, 217, 255, 0.7)  50%,
+        rgba(0, 217, 255, 0.15) 92%,
+        transparent 100%
+    );
+    box-shadow: 0 0 6px rgba(0, 217, 255, 0.4);
+}
+
 /* ── Trigger Feed Widget ──────────────────────────────────────────────────── */
 
 .wm-type-trigger .wm-inner {
