@@ -129,17 +129,20 @@ class WidgetManager {
 
     _applyEnabled(el, state) {
         if (state.enabled) {
+            // Fully visible — strip every inline override so CSS takes over cleanly
             el.classList.remove('wm-disabled', 'wm-show-disabled');
             el.style.display       = '';
             el.style.opacity       = '';
+            el.style.visibility    = '';
             el.style.pointerEvents = '';
         } else {
+            // Disabled: only show (ghosted) when edit mode is awake
             el.classList.add('wm-disabled');
-            // Visibility of disabled widgets follows edit mode
-            const show = this._isEditing;
+            const show = this._isEditing === true;
             el.classList.toggle('wm-show-disabled', show);
             el.style.display       = show ? '' : 'none';
             el.style.pointerEvents = show ? 'all' : 'none';
+            el.style.visibility    = '';
         }
     }
 
@@ -369,4 +372,4 @@ class WidgetManager {
     }
 }
 
-const widgetManager = new WidgetManager();
+window.widgetManager = new WidgetManager();
