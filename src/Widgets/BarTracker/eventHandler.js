@@ -391,6 +391,7 @@ class EventHandler {
         if (typeof triggerEngine === 'undefined') return;
         
         const trigger = triggerEngine.triggers.get(triggerId);
+        const state   = triggerEngine.triggerStates.get(triggerId);
         if (!trigger) return;
 
         console.log('🎯 Trigger fired:', trigger.name);
@@ -404,7 +405,8 @@ class EventHandler {
             widgetManager.emitTrigger({
                 id: triggerId,
                 name: trigger.name, 
-                event: eventRecord.data.event
+                event: eventRecord.data.event,
+                context: state?.lastContext ?? null
             });
         }
     }

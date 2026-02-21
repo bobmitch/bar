@@ -47,11 +47,18 @@ widgetManager.register({
             break; // only remove one at a time
         }
 
+        // Pull subtitle from context if the action provided one
+        const subtitle = data.context?.visual?.description
+                  || data.context?.visual?.value
+                  || null;
         const card = document.createElement('div');
         card.className = 'wt-card';
         card.innerHTML = `
             <span class="wt-icon">⚡</span>
-            <span class="wt-name">${_bwEsc(data.name || 'Trigger Fired')}</span>
+            <div class="wt-body">
+                <span class="wt-name">${_bwEsc(data.name || 'Trigger Fired')}</span>
+                ${subtitle ? `<span class="wt-subtitle">${_bwEsc(subtitle)}</span>` : ''}
+            </div>
         `;
         stack.appendChild(card);
 

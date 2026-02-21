@@ -183,13 +183,18 @@ class TriggerEngine {
         }
 
         // Execute trigger actions
+        // save context for better trigger information in actions, if needed in the future
+        let context = null;
         for (const action of trigger.actions) {
             try {
-                action(eventData);
+                const result = action(eventData);
+                if (result != null) context = result;
             } catch (err) {
                 console.error(`Error executing action for trigger ${triggerId}:`, err);
             }
         }
+
+        state.lastContext = context; // Store last action result for potential use in UI or debugging
 
         // Play audio cue if soundpack has audio for this trigger
         this.playAudioForTrigger(triggerId);
@@ -202,11 +207,13 @@ class TriggerEngine {
         }, trigger.cooldown);
 
         // Emit event for UI updates
+        // context now on DOM event for potential use in widgets or other UI components
         window.dispatchEvent(new CustomEvent('triggerFired', {
             detail: {
                 triggerId,
                 triggerName: trigger.name,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                context
             }
         }));
     }
