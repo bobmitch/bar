@@ -49,6 +49,7 @@ class BarTracker extends Widget {
 				<div class="bar-brand">BAR TRACKER <span class="v-tag">v0.2 Dev</span></div>
 				<div class="header-status">
 					<button id="copy-uuid-btn" class="bar-btn-small" title="Copy your UUID to clipboard">📋 Copy UUID</button>
+					<button id="reset-all-btn" class="bar-btn-small bar-btn-danger" title="Reset all game state">↺ RESET</button>
 					<div id="connection-status" class="status-badge disconnected">🔴 OFFLINE</div>
 					<div id="game-time" class="timer">00:00</div>
 				</div>

@@ -44,6 +44,10 @@ class UIManager {
     initialize() {
         console.log('📊 Initializing UIManager...');
         this.initializeEventListeners();
+        const resetBtn = document.getElementById('reset-all-btn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => this.resetAll());
+        }
     }
 
     /**
@@ -326,6 +330,40 @@ class UIManager {
         if (logArea) {
             logArea.innerHTML = '<div class="event-empty">Waiting for events...</div>';
         }
+    }
+
+    resetAll() {
+        console.log('🔄 Reset all triggered');
+
+        // Reset game state store
+        if (typeof gameState !== 'undefined') {
+            gameState.reset();
+        }
+
+        // Reset event handler internal state
+        if (typeof eventHandler !== 'undefined') {
+            eventHandler.gameInitialized = false;
+            eventHandler.lastStatsUpdate = 0;
+            eventHandler.eventHistory = [];
+        }
+
+        // Clear the battle log
+        this.clearEventLog();
+
+        // Reset the stats panel
+        const statusEl = document.getElementById('status');
+        if (statusEl) statusEl.innerHTML = '<p>Loading team status...</p>';
+
+        // Reset game timer
+        const gameTimeEl = document.getElementById('game-time');
+        if (gameTimeEl) gameTimeEl.textContent = '00:00';
+
+        // Tick widgets so they render zeroed-out values immediately
+        if (typeof statWidgets !== 'undefined') {
+            statWidgets.tick();
+        }
+
+        console.log('✅ Reset complete');
     }
 
     /**

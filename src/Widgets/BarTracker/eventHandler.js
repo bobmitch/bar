@@ -281,6 +281,11 @@ class EventHandler {
     }
 
     handleUpdateAllUnits(data) {
+        // Reset BEFORE processing the incoming unit defs
+        // we only get this data once per game, so we can be aggressive about resetting state here to ensure accuracy
+        if (typeof uiManager !== 'undefined') {
+            uiManager.resetAll();
+        }
         console.log('📦 Received allUnits update with', Object.keys(data.unitDefs).length, 'units');
         window.unitDefs = data.unitDefs;
     }
