@@ -221,7 +221,7 @@ class GameStateStore {
         }
 
         // Update attacker unit stats
-        if (attackerID) {
+        if (attackerID != null && attackerID !== -1) {
             const attacker = this.units.get(attackerID);
             if (attacker) {
                 attacker.killCount   += 1;
@@ -230,7 +230,8 @@ class GameStateStore {
         }
 
         // Update attacker's team stats
-        if (attackerTeam && this.teams.has(attackerTeam)) {
+        // fix to ensure my own teams stats are updated
+        if (attackerTeam != null && attackerTeam !== -1 && this.teams.has(attackerTeam)) {
             const attackerTeamData = this.teams.get(attackerTeam);
             attackerTeamData.killedCount += 1;
             attackerTeamData.metalKilled  = (attackerTeamData.metalKilled || 0) + unit.metalCost;
@@ -249,13 +250,13 @@ class GameStateStore {
         unit.inCombat       = true;
 
         // Update attacker unit stats (O(1) running counter)
-        if (attackerID) {
+        if (attackerID != null && attackerID !== -1) {
             const attacker = this.units.get(attackerID);
             if (attacker) attacker.damageDealt += damage;
         }
 
         // Update team aggregates (O(1) running counters)
-        if (attackerTeam && this.teams.has(attackerTeam)) {
+        if (attackerTeam != null && attackerTeam !== -1 && this.teams.has(attackerTeam)) {
             this.teams.get(attackerTeam).totalDamageDealt += damage;
         }
         if (this.teams.has(unit.teamID)) {
