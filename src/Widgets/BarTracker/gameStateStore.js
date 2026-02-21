@@ -61,6 +61,7 @@ class GameStateStore {
             totalDamageTaken: 0,
             killedCount: 0,
             lostCount: 0,
+            metalLost: 0,
             metalStats: {},
             energyStats: {},
             lastUpdate: Date.now()
@@ -158,6 +159,7 @@ class GameStateStore {
             team.unitCount -= 1;
             team.totalMetalCost -= unit.metalCost;
             team.lostCount += 1;
+            team.metalLost = (team.metalLost || 0) + unit.metalCost;
         }
 
         // Update attacker unit stats — THIS IS THE KEY FIX
