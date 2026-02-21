@@ -1,7 +1,11 @@
 <?php
+	use \bobmitch\bar\Helpers\SessionBootstrap;
+	SessionBootstrap::init(); // Start session and attempt remember-me login if no session exists
+
 	use HoltBosse\Alba\Core\{Access, Actions, CMS, Category, Component, Configuration, Content, ContentSearch, Controller, File, Hook, Image, JSON, Mail, Page, Plugin, Tag, Template, User, UserSearch, Widget};
 	use HoltBosse\DB\DB;
 	$alias = CMS::Instance()->page->alias;
+	
 ?>
 
 <!DOCTYPE html>

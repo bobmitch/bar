@@ -4,18 +4,29 @@ namespace bobmitch\bar\Widgets\BarTracker;
 Use HoltBosse\Alba\Core\{CMS,Widget};
 Use HoltBosse\DB\DB;
 use bobmitch\bar\Helpers\CSRF;
+use bobmitch\bar\Helpers\RememberMe;
 
 class BarTracker extends Widget {
 
 	public function render() {
         if (!isset($_SESSION['user_id'])) {
-            CMS::Instance()->queue_message('You must be logged in to access the Bar Tracker widget.', 'danger','/login');
+            /* CMS::Instance()->queue_message('You must be logged in to access the Bar Tracker widget.', 'danger','/login');
             header("Location: /login");
-            exit;
+            exit; */
+			CMS::pprint_r ('you are not logged in'); // DEBUG
+			die();
         }
         else {
             // logged in, set window.uuid for JS use
-            $user = DB::fetch('select uuid from users where id=?', $_SESSION['user_id']);
+            $user = DB::fetch('select uuid,state from users where id=?', $_SESSION['user_id']);
+			// Guard: user deleted or de-activated since cookie was issued
+			if (!$user || (int)$user->state !== 1) {
+				RememberMe::revokeAll((int)$_SESSION['user_id']);
+				session_destroy();
+				header("Location: /login");
+				exit;
+			}
+
             $uuid = $user->uuid ?? 'unknown-uuid';
             echo "<script>window.uuid = " . json_encode($uuid) . ";</script>";
         }

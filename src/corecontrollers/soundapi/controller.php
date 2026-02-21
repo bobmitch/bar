@@ -19,6 +19,7 @@ use HoltBosse\Alba\Core\CMS;
 use HoltBosse\Form\Input;
 use HoltBosse\DB\DB;
 use bobmitch\bar\Helpers\CSRF;
+use bobmitch\bar\Helpers\RememberMe;
 
 class SoundpackController {
     
@@ -38,18 +39,32 @@ class SoundpackController {
     ];
 
     public function __construct() {
-        // Verify user is logged in
+        // Ensure session is started and attempt remember-me cookie login
+        // if the session is missing (this controller bypasses CMS template rendering)
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        if (empty($_SESSION['user_id'])) {
+            $user = RememberMe::attempt();
+            if ($user) {
+                $_SESSION['user_id']  = $user->id;
+                $_SESSION['username'] = $user->username;
+                session_regenerate_id(true);
+            }
+        }
+
+        // Now verify user is logged in
         if (!isset($_SESSION['user_id'])) {
             $this->error('Unauthorized: User not logged in', 401);
+            echo json_encode($this->response);
             return;
         }
-        
+
         $this->userId = $_SESSION['user_id'];
         $this->method = $_SERVER['REQUEST_METHOD'];
         $this->action = CMS::Instance()->uri_segments[2] ?? '';
 
-        //CMS::pprint_r("SoundpackController initialized with action: {$this->action} and method: {$this->method}");
-        
         // Ensure upload directory exists
         if (!is_dir(self::AUDIO_STORAGE_DIR)) {
             mkdir(self::AUDIO_STORAGE_DIR, 0755, true);
