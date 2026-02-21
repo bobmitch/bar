@@ -381,6 +381,15 @@ class EventHandler {
         if (typeof uiManager !== 'undefined') {
             uiManager.updateTriggerFiredState(triggerId);
         }
+
+        // Emit trigger event for widgets
+        if (typeof widgetManager !== 'undefined') {
+            widgetManager.emitTrigger({
+                id: triggerId,
+                name: trigger.name, 
+                event: eventRecord.data.event
+            });
+        }
     }
 
     /**
