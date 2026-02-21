@@ -128,6 +128,12 @@ class EventHandler {
                 this.eventHistory.shift(); // keep last 10000 events
             }
 
+            // STEP 6:  Update widgets
+            // make sure statWidgets is loaded in case we dynamically load this in future
+            if (typeof statWidgets !== 'undefined') {
+                statWidgets.tick();
+            }
+
         } catch (err) {
             console.error('❌ Error handling message:', err, data);
         }
