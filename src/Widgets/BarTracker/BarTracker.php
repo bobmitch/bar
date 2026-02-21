@@ -10,11 +10,9 @@ class BarTracker extends Widget {
 
 	public function render() {
         if (!isset($_SESSION['user_id'])) {
-            /* CMS::Instance()->queue_message('You must be logged in to access the Bar Tracker widget.', 'danger','/login');
+            CMS::Instance()->queue_message('You must be logged in to access the Bar Tracker widget.', 'danger','/login');
             header("Location: /login");
-            exit; */
-			CMS::pprint_r ('you are not logged in'); // DEBUG
-			die();
+            exit;
         }
         else {
             // logged in, set window.uuid for JS use
