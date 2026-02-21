@@ -278,6 +278,7 @@ class EventHandler {
             attacker: data.attackerName,
             metalLost: data.unitMetalCost
         });
+
     }
 
     handleUpdateAllUnits(data) {
@@ -344,9 +345,20 @@ class EventHandler {
         // Guard: this handler is for AllyStatesUpdate, not AllyStatsUpdate
         if (data.event !== BAR_EVENTS.ALLY_STATES_UPDATE) return;
 
+        const team = gameState.initTeam(id, {       // ✅ idempotent — safe to call repeatedly
+            isMyAlly:   true,
+            playerName: stats.playerName
+        });
+
         for (const [teamID, stats] of Object.entries(data.teams)) {
-            let team = gameState.getTeam(parseInt(teamID));
+            //let team = gameState.getTeam(parseInt(teamID));
+            const team = gameState.initTeam(id, {       // ✅ idempotent — safe to call repeatedly
+                isMyAlly:   true,
+                playerName: stats.playerName
+            });
+
             if (!team) {
+                console.error('Failed to initialize team for ally states update:', teamID);
                 team = { teamID: parseInt(teamID), isMyAlly: true };
                 gameState.teams.set(parseInt(teamID), team);
             }

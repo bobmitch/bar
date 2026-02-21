@@ -50,7 +50,8 @@ class GameStateStore {
         };
         
         // Initialize team tracking
-        this.teams.set(playerInfo.myTeamID, {
+        // old way was inline and we need to ensure consistent shape, so moved to initTeam method
+        /* this.teams.set(playerInfo.myTeamID, {
             teamID: playerInfo.myTeamID,
             allyTeamID: playerInfo.allyTeamID,
             isMyTeam: true,
@@ -65,6 +66,12 @@ class GameStateStore {
             metalStats: {},
             energyStats: {},
             lastUpdate: Date.now()
+        }); */
+         // Use initTeam so the shape is always consistent
+        this.initTeam(playerInfo.myTeamID, {
+            isMyTeam:   true,
+            isMyAlly:   true,
+            playerName: playerInfo.playerName
         });
         
         this.logEvent({
@@ -72,6 +79,32 @@ class GameStateStore {
             timestamp: Date.now(),
             data: playerInfo
         });
+    }
+
+    // Single place that creates a team entry — call this whenever a new teamID is discovered
+    initTeam(teamID, options = {}) {
+        if (this.teams.has(teamID)) return this.teams.get(teamID); // already exists, skip
+        
+        const team = {
+            teamID,
+            isMyTeam:        options.isMyTeam  || false,
+            isMyAlly:        options.isMyAlly  || false,
+            playerName:      options.playerName || null,
+            unitCount:       0,
+            totalMetalCost:  0,
+            totalDamageDealt:0,
+            totalDamageTaken:0,
+            killedCount:     0,
+            lostCount:       0,
+            metalKilled:     0,
+            metalLost:       0,
+            metalStats:      {},
+            energyStats:     {},
+            lastUpdate:      Date.now()
+        };
+        
+        this.teams.set(teamID, team);
+        return team;
     }
 
     /**
@@ -146,12 +179,14 @@ class GameStateStore {
 
     destroyUnit(unitID, attackerID, attackerTeam) {
         const unit = this.units.get(unitID);
+        //console.log('🔍 destroyUnit | unitID:', unitID, '| found:', !!unit, '| units in map:', this.units.size);
         if (!unit) return null;
 
         unit.destroyed = true;
         unit.destroyedAt = this.gameState.gameTime;
         unit.destroyedBy = attackerID;
         unit.destroyedByTeam = attackerTeam;
+
 
         // Update victim's team stats
         if (this.teams.has(unit.teamID)) {
