@@ -12,6 +12,7 @@ body {
     /* 4. Improve text rendering */
     -webkit-font-smoothing: antialiased;
     font-family:Arial, Helvetica, sans-serif;
+    color:white;
 }
 /* 5. Improve media defaults */
 img, picture, video, canvas, svg {
