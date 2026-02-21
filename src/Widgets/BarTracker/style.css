@@ -1114,3 +1114,92 @@ body[data-view="streaming"] {
     100% { opacity: 0; }
 }
 
+
+/* ========== AUDIO UPLOAD ZONE ========== */
+
+.upload-area {
+    margin-top: 10px;
+    border: 2px dashed var(--border-color);
+    border-radius: var(--border-radius);
+    background: rgba(0, 0, 0, 0.2);
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+}
+
+.upload-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: color 0.2s ease;
+}
+
+.upload-label::before {
+    content: '🎵';
+    font-size: 14px;
+    opacity: 0.6;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Hover — subtle invite */
+.upload-area:hover {
+    border-color: rgba(0, 217, 255, 0.4);
+    background: rgba(0, 217, 255, 0.03);
+}
+
+.upload-area:hover .upload-label {
+    color: var(--text-primary);
+}
+
+.upload-area:hover .upload-label::before {
+    opacity: 1;
+}
+
+/* Dragover — active drop target */
+.upload-area.dragover {
+    border-color: var(--accent-primary);
+    border-style: solid;
+    background: rgba(0, 217, 255, 0.08);
+    box-shadow:
+        0 0 0 1px rgba(0, 217, 255, 0.3),
+        0 0 20px rgba(0, 217, 255, 0.15);
+    animation: dropPulse 1s ease infinite;
+}
+
+.upload-area.dragover .upload-label {
+    color: var(--accent-primary);
+}
+
+.upload-area.dragover .upload-label::before {
+    opacity: 1;
+    transform: scale(1.2);
+    content: '⬇️';
+}
+
+@keyframes dropPulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(0, 217, 255, 0.3), 0 0 20px rgba(0, 217, 255, 0.15); }
+    50%       { box-shadow: 0 0 0 1px rgba(0, 217, 255, 0.6), 0 0 30px rgba(0, 217, 255, 0.3); }
+}
+
+/* Upload progress */
+.upload-progress {
+    padding: 6px 16px 10px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--accent-primary);
+    text-align: center;
+    animation: progressBlink 1s ease infinite;
+}
+
+@keyframes progressBlink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+

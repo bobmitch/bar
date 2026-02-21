@@ -372,9 +372,8 @@ class TriggersManager {
         // --- DRAG & DROP HANDLERS: Visual Feedback + Upload ---
 
         container.addEventListener('dragenter', (e) => {
+            e.preventDefault(); // MUST be before any early return
             if (!e.target.closest('.upload-area')) return;
-            
-            e.preventDefault();
             e.stopImmediatePropagation();
             
             const uploadArea = e.target.closest('.upload-area');
@@ -385,9 +384,8 @@ class TriggersManager {
         }, true);
 
         container.addEventListener('dragover', (e) => {
+            e.preventDefault(); // MUST be before any early return
             if (!e.target.closest('.upload-area')) return;
-            
-            e.preventDefault();
             e.stopImmediatePropagation();
             e.dataTransfer.dropEffect = 'copy';
         }, true);
@@ -417,21 +415,6 @@ class TriggersManager {
                 const file = files[0];
                 console.log(`📁 File: ${file.name} (${file.type}, ${file.size} bytes)`);
                 await this.uploadAudio(triggerId, file);
-            }
-        }, true);
-
-        // --- FILE INPUT CLICK HANDLER ---
-        container.addEventListener('click', (e) => {
-            const uploadLabel = e.target.closest('.upload-label');
-            if (!uploadLabel) return;
-            
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            
-            const fileInput = uploadLabel.querySelector('.audio-upload-input');
-            if (fileInput) {
-                console.log('📂 Opening file dialog');
-                fileInput.click();
             }
         }, true);
 
