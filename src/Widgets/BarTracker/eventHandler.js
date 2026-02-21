@@ -345,14 +345,9 @@ class EventHandler {
         // Guard: this handler is for AllyStatesUpdate, not AllyStatsUpdate
         if (data.event !== BAR_EVENTS.ALLY_STATES_UPDATE) return;
 
-        const team = gameState.initTeam(id, {       // ✅ idempotent — safe to call repeatedly
-            isMyAlly:   true,
-            playerName: stats.playerName
-        });
-
         for (const [teamID, stats] of Object.entries(data.teams)) {
             //let team = gameState.getTeam(parseInt(teamID));
-            const team = gameState.initTeam(id, {       // ✅ idempotent — safe to call repeatedly
+            const team = gameState.initTeam(parseInt(teamID), {       // ✅ idempotent — safe to call repeatedly
                 isMyAlly:   true,
                 playerName: stats.playerName
             });

@@ -2,37 +2,62 @@
  * GameStateStore - Centralized, efficient game data management
  * Handles all event data, unit tracking, team stats, and historical queries
  * Designed for easy trigger development and custom condition evaluation
+ *
+ * Fix #5: damageHistory, statsHistory, and the events log are now bounded.
+ *   - damageHistory: rolling cap of DAMAGE_HISTORY_MAX entries (~30s at peak fire rate)
+ *   - statsHistory:  rolling cap of STATS_HISTORY_MAX entries (~2 min at 1 Hz)
+ *   - events:        rolling cap of EVENTS_MAX entries; eventIndex IDs are relative
+ *                    positions in the capped array so old entries age out cleanly.
+ *
+ * Unit-level and team-level running counters (damageDealt, damageTaken,
+ * totalDamageDealt, killedCount, etc.) are unaffected — they accumulate for
+ * the whole game and are the primary path for O(1) trigger lookups.
+ * The history arrays exist only for windowed / trend queries.
  */
+
+// ── Capacity constants ────────────────────────────────────────────────────────
+// Tune these if memory becomes a concern; they are deliberately generous.
+
+/** Max entries kept in damageHistory. UnitDamaged fires ~30 Hz per unit in
+ *  combat; 2 000 entries covers ~60s of heavy fighting with headroom. */
+const DAMAGE_HISTORY_MAX = 2000;
+
+/** Max entries in statsHistory. FullStatsUpdate fires ~1 Hz → 120 entries = 2 min. */
+const STATS_HISTORY_MAX = 120;
+
+/** Max entries in the events log. Covers the longest trigger look-back window
+ *  (currently 30 s) with ample headroom for bursty UnitFinished traffic. */
+const EVENTS_MAX = 1000;
 
 class GameStateStore {
     constructor() {
         // Core collections
-        this.units = new Map();           // unitID -> unitData
-        this.teams = new Map();           // teamID -> teamData
-        this.events = [];                 // chronological event log
-        this.eventIndex = new Map();      // eventType -> [eventIDs]
-        
-        // Time-series data for trends
-        this.statsHistory = [];           // [{timestamp, frame, teamID, stats}]
-        this.damageHistory = [];          // [{timestamp, frame, attacker, victim, damage}]
-        
+        this.units      = new Map();   // unitID  -> unitData
+        this.teams      = new Map();   // teamID  -> teamData
+        this.events     = [];          // capped chronological event log
+        this.eventIndex = new Map();   // eventType -> [indices into this.events]
+
+        // Time-series data for trends — capped ring buffers
+        this.statsHistory  = [];       // [{timestamp, frame, teamID, stats}]
+        this.damageHistory = [];       // [{timestamp, frame, attacker, victim, damage}]
+
         // Current game state
         this.gameState = {
-            frame: 0,
-            gameTime: 0,
-            myTeamID: -1,
+            frame:       0,
+            gameTime:    0,
+            myTeamID:   -1,
             myPlayerID: -1,
             allyTeamID: -1,
             gameStarted: false,
-            gameEnded: false,
-            overflow_m: false,
-            overflow_e: false
+            gameEnded:   false,
+            overflow_m:  false,
+            overflow_e:  false
         };
-        
+
         // Performance optimization - batch updates
-        this.pendingUpdates = [];
+        this.pendingUpdates  = [];
         this.updateBatchSize = 5;
-        this.updateCounter = 0;
+        this.updateCounter   = 0;
     }
 
     /**
@@ -42,93 +67,92 @@ class GameStateStore {
     initGame(playerInfo) {
         this.gameState = {
             ...this.gameState,
-            myTeamID: playerInfo.myTeamID,
-            myPlayerID: playerInfo.myPlayerID,
-            allyTeamID: playerInfo.allyTeamID,
-            playerName: playerInfo.playerName,
+            myTeamID:    playerInfo.myTeamID,
+            myPlayerID:  playerInfo.myPlayerID,
+            allyTeamID:  playerInfo.allyTeamID,
+            playerName:  playerInfo.playerName,
             gameStarted: true
         };
-        
-        // Initialize team tracking
-        // old way was inline and we need to ensure consistent shape, so moved to initTeam method
-        /* this.teams.set(playerInfo.myTeamID, {
-            teamID: playerInfo.myTeamID,
-            allyTeamID: playerInfo.allyTeamID,
-            isMyTeam: true,
-            isMyAlly: true,
-            unitCount: 0,
-            totalMetalCost: 0,
-            totalDamageDealt: 0,
-            totalDamageTaken: 0,
-            killedCount: 0,
-            lostCount: 0,
-            metalLost: 0,
-            metalStats: {},
-            energyStats: {},
-            lastUpdate: Date.now()
-        }); */
-         // Use initTeam so the shape is always consistent
+
+        // Use initTeam so the shape is always consistent
         this.initTeam(playerInfo.myTeamID, {
             isMyTeam:   true,
             isMyAlly:   true,
             playerName: playerInfo.playerName
         });
-        
+
         this.logEvent({
-            event: 'GameInitialized',
+            event:     'GameInitialized',
             timestamp: Date.now(),
-            data: playerInfo
+            data:      playerInfo
         });
     }
 
-    // Single place that creates a team entry — call this whenever a new teamID is discovered
+    /**
+     * Single place that creates a team entry.
+     * Idempotent: returns the existing team if already initialised, without
+     * touching any counters.
+     */
     initTeam(teamID, options = {}) {
-        if (this.teams.has(teamID)) return this.teams.get(teamID); // already exists, skip
-        
+        if (this.teams.has(teamID)) return this.teams.get(teamID);
+
         const team = {
             teamID,
-            isMyTeam:        options.isMyTeam  || false,
-            isMyAlly:        options.isMyAlly  || false,
-            playerName:      options.playerName || null,
-            unitCount:       0,
-            totalMetalCost:  0,
-            totalDamageDealt:0,
-            totalDamageTaken:0,
-            killedCount:     0,
-            lostCount:       0,
-            metalKilled:     0,
-            metalLost:       0,
-            metalStats:      {},
-            energyStats:     {},
-            lastUpdate:      Date.now()
+            isMyTeam:         options.isMyTeam   || false,
+            isMyAlly:         options.isMyAlly   || false,
+            playerName:       options.playerName || null,
+            unitCount:        0,
+            totalMetalCost:   0,
+            totalDamageDealt: 0,
+            totalDamageTaken: 0,
+            killedCount:      0,
+            lostCount:        0,
+            metalKilled:      0,
+            metalLost:        0,
+            metalStats:       {},
+            energyStats:      {},
+            lastUpdate:       Date.now()
         };
-        
+
         this.teams.set(teamID, team);
         return team;
     }
 
     /**
      * EVENT LOGGING & INDEXING
+     * Fix #5: events array is capped at EVENTS_MAX. When the cap is hit the
+     * oldest entry is removed and the eventIndex is rebuilt for that type so
+     * stale indices are never served to callers.
      */
 
     logEvent(eventData) {
         const eventRecord = {
-            id: this.events.length,
+            id:        this.events.length,   // logical ID; only used for ordering
             timestamp: eventData.timestamp || Date.now(),
-            frame: this.gameState.frame,
-            gameTime: this.gameState.gameTime,
-            type: eventData.event,
-            data: eventData
+            frame:     this.gameState.frame,
+            gameTime:  this.gameState.gameTime,
+            type:      eventData.event,
+            data:      eventData
         };
-        
+
+        // Enforce cap: drop the oldest entry before pushing the new one
+        if (this.events.length >= EVENTS_MAX) {
+            const removed = this.events.shift();
+            // Prune the eventIndex entry for the removed event's type
+            if (removed && removed.type) {
+                const idxArr = this.eventIndex.get(removed.type);
+                if (idxArr && idxArr.length > 0) idxArr.shift();
+            }
+        }
+
         this.events.push(eventRecord);
-        
+
         // Build reverse index for fast lookup by type
         if (!this.eventIndex.has(eventData.event)) {
             this.eventIndex.set(eventData.event, []);
         }
-        this.eventIndex.get(eventData.event).push(eventRecord.id);
-        
+        this.eventIndex.get(eventData.event).push(eventRecord);
+
         return eventRecord;
     }
 
@@ -139,70 +163,69 @@ class GameStateStore {
     addUnit(unitID, unitData) {
         const unit = {
             unitID,
-            unitDefID: unitData.unitDefID,
-            unitName: unitData.unitName,
-            unitTier: unitData.unitTier || 1,
-            metalCost: unitData.unitMetalCost || 0,
-            teamID: unitData.unitTeam,
-            relation: unitData.relation,
-            
+            unitDefID:    unitData.unitDefID,
+            unitName:     unitData.unitName,
+            unitTier:     unitData.unitTier || 1,
+            metalCost:    unitData.unitMetalCost || 0,
+            teamID:       unitData.unitTeam,
+            relation:     unitData.relation,
+
             // Tracking metrics
-            createdAt: this.gameState.gameTime,
-            damageTaken: 0,
-            damageDealt: 0,
-            killCount: 0,
-            metalKilled: 0,      
-            assistCount: 0,
-            lastDamagedAt: null,
-            lastDamagedBy: null,
-            inCombat: false,
-            
+            createdAt:       this.gameState.gameTime,
+            damageTaken:     0,
+            damageDealt:     0,
+            killCount:       0,
+            metalKilled:     0,
+            assistCount:     0,
+            lastDamagedAt:   null,
+            lastDamagedBy:   null,
+            inCombat:        false,
+
             // State
-            destroyed: false,
-            destroyedAt: null,
-            destroyedBy: null,
+            destroyed:       false,
+            destroyedAt:     null,
+            destroyedBy:     null,
             destroyedByTeam: null,
-            creatorPlayer: unitData.playerName || 'Unknown'
+            creatorPlayer:   unitData.playerName || 'Unknown'
         };
-        
+
         this.units.set(unitID, unit);
-        
+
         // Update team stats
         if (this.teams.has(unit.teamID)) {
             const team = this.teams.get(unit.teamID);
-            team.unitCount += 1;
+            team.unitCount      += 1;
             team.totalMetalCost += unit.metalCost;
         }
-        
+
         return unit;
     }
 
     destroyUnit(unitID, attackerID, attackerTeam) {
         const unit = this.units.get(unitID);
-        //console.log('🔍 destroyUnit | unitID:', unitID, '| found:', !!unit, '| units in map:', this.units.size);
+        console.log('🔍 destroyUnit | unitID:', unitID, '| found:', !unit, '| units in map:', this.units.size);
         if (!unit) return null;
 
-        unit.destroyed = true;
-        unit.destroyedAt = this.gameState.gameTime;
-        unit.destroyedBy = attackerID;
+        unit.destroyed       = true;
+        unit.destroyedAt     = this.gameState.gameTime;
+        unit.destroyedBy     = attackerID;
         unit.destroyedByTeam = attackerTeam;
-
 
         // Update victim's team stats
         if (this.teams.has(unit.teamID)) {
             const team = this.teams.get(unit.teamID);
-            team.unitCount -= 1;
+            team.unitCount      -= 1;
             team.totalMetalCost -= unit.metalCost;
-            team.lostCount += 1;
-            team.metalLost = (team.metalLost || 0) + unit.metalCost;
+            team.lostCount      += 1;
+            team.metalLost       = (team.metalLost || 0) + unit.metalCost;
         }
 
-        // Update attacker unit stats — THIS IS THE KEY FIX
+        // Update attacker unit stats
         if (attackerID) {
             const attacker = this.units.get(attackerID);
             if (attacker) {
-                attacker.killCount += 1;
-                attacker.metalKilled = (attacker.metalKilled || 0) + unit.metalCost;
+                attacker.killCount   += 1;
+                attacker.metalKilled  = (attacker.metalKilled || 0) + unit.metalCost;
             }
         }
 
@@ -210,7 +233,7 @@ class GameStateStore {
         if (attackerTeam && this.teams.has(attackerTeam)) {
             const attackerTeamData = this.teams.get(attackerTeam);
             attackerTeamData.killedCount += 1;
-            attackerTeamData.metalKilled = (attackerTeamData.metalKilled || 0) + unit.metalCost;
+            attackerTeamData.metalKilled  = (attackerTeamData.metalKilled || 0) + unit.metalCost;
         }
 
         return unit;
@@ -220,20 +243,18 @@ class GameStateStore {
         const unit = this.units.get(unitID);
         if (!unit) return null;
 
-        unit.damageTaken += damage;
-        unit.lastDamagedAt = this.gameState.gameTime;
-        unit.lastDamagedBy = attackerID;
-        unit.inCombat = true;
+        unit.damageTaken   += damage;
+        unit.lastDamagedAt  = this.gameState.gameTime;
+        unit.lastDamagedBy  = attackerID;
+        unit.inCombat       = true;
 
-        // Update attacker unit stats — THIS IS THE KEY FIX
+        // Update attacker unit stats (O(1) running counter)
         if (attackerID) {
             const attacker = this.units.get(attackerID);
-            if (attacker) {
-                attacker.damageDealt += damage;
-            }
+            if (attacker) attacker.damageDealt += damage;
         }
 
-        // Update team aggregates
+        // Update team aggregates (O(1) running counters)
         if (attackerTeam && this.teams.has(attackerTeam)) {
             this.teams.get(attackerTeam).totalDamageDealt += damage;
         }
@@ -241,13 +262,18 @@ class GameStateStore {
             this.teams.get(unit.teamID).totalDamageTaken += damage;
         }
 
+        // Fix #5: push to bounded damageHistory — drop oldest if at cap
+        if (this.damageHistory.length >= DAMAGE_HISTORY_MAX) {
+            this.damageHistory.shift();
+        }
         this.damageHistory.push({
-            timestamp: Date.now(),
-            frame: this.gameState.frame,
-            attacker: attackerID,
+            timestamp:   Date.now(),
+            frame:       this.gameState.frame,
+            gameTime:    this.gameState.gameTime,
+            attacker:    attackerID,
             attackerTeam,
-            victim: unitID,
-            victimTeam: unit.teamID,
+            victim:      unitID,
+            victimTeam:  unit.teamID,
             damage
         });
 
@@ -255,10 +281,10 @@ class GameStateStore {
     }
 
     /**
-     * QUERY METHODS - For building triggers
+     * QUERY METHODS — For building triggers
      */
 
-    // Get unit with full context
+    // O(1) via running counter on unit
     getUnit(unitID) {
         return this.units.get(unitID);
     }
@@ -267,140 +293,131 @@ class GameStateStore {
     queryUnits(criteria) {
         const results = [];
         for (const unit of this.units.values()) {
-            if (this.matchesCriteria(unit, criteria)) {
-                results.push(unit);
-            }
+            if (this.matchesCriteria(unit, criteria)) results.push(unit);
         }
         return results;
     }
 
     // Get units by team
     getTeamUnits(teamID, includeDestroyed = false) {
-        return Array.from(this.units.values()).filter(u => 
+        return Array.from(this.units.values()).filter(u =>
             u.teamID === teamID && (includeDestroyed || !u.destroyed)
         );
     }
 
-    // Get team data
     getTeam(teamID) {
         return this.teams.get(teamID);
     }
 
-    // Get my team
     getMyTeam() {
         return this.teams.get(this.gameState.myTeamID);
     }
 
-    // Get recent events of a type
+    /**
+     * Get recent events of a type within a wall-clock window.
+     * Fix #5: eventIndex now stores event record references directly, so
+     * there is no stale-index problem after the events array is trimmed.
+     */
     getRecentEvents(eventType, seconds = 30) {
-        const cutoff = Date.now() - (seconds * 1000);
-        const eventIDs = this.eventIndex.get(eventType) || [];
-        
-        return eventIDs
-            .map(id => this.events[id])
+        const cutoff  = Date.now() - (seconds * 1000);
+        const records = this.eventIndex.get(eventType) || [];
+
+        // Records are already in chronological order; filter and reverse for callers
+        return records
             .filter(e => e && e.timestamp >= cutoff)
             .reverse(); // Most recent first
     }
 
-    // Count kills in time window
-    countKillsInWindow(unitID, seconds = 30) {
-        const cutoff = this.gameState.gameTime - seconds;
-        const destroyEvents = this.getRecentEvents('UnitDestroyed', seconds);
-        
-        return destroyEvents.filter(e => 
-            e.data.data.attackerID === unitID &&
-            e.gameTime >= cutoff
-        ).length;
-    }
-
+    // O(1) via running counter on unit
     getKillCount(unitID) {
         const unit = this.units.get(unitID);
         return unit ? unit.killCount : 0;
     }
 
-    // O(n), just in case needed - try and use getKillCount for just numbers
+    // Count kills attributed to a unit within a game-time window
+    countKillsInWindow(unitID, seconds = 30) {
+        const cutoff = this.gameState.gameTime - seconds;
+        return this.getRecentEvents('UnitDestroyed', seconds).filter(e =>
+            e.data.attackerID === unitID &&
+            e.gameTime >= cutoff
+        ).length;
+    }
+
+    // O(n) scan — use sparingly; prefer getKillCount for plain counts
     getKilledBy(unitID) {
         return Array.from(this.units.values()).filter(u => u.destroyedBy === unitID);
     }
 
-    // Replace getDamageDealtBy with O(1) lookup
+    /**
+     * O(1) — reads the running counter accumulated during damageUnit().
+     * This is the correct method to use in trigger conditions.
+     */
     getDamageDealtBy(unitID) {
         const unit = this.units.get(unitID);
         return unit ? unit.damageDealt : 0;
     }
 
-    // Get damage dealt by unit
-    getDamageDealtBy(unitID) {
-        return this.damageHistory
-            .filter(d => d.attacker === unitID)
-            .reduce((sum, d) => sum + d.damage, 0);
-    }
-
-    // Get damage taken by unit
     getDamageTakenBy(unitID) {
         const unit = this.units.get(unitID);
         return unit ? unit.damageTaken : 0;
     }
 
-    // Time-series analysis: damage rate
+    // Time-series analysis: damage rate against a team within a wall-clock window
     getDamageRateInWindow(teamID, seconds = 120) {
-        const cutoff = Date.now() - (seconds * 1000);
+        const cutoff      = Date.now() - (seconds * 1000);
         const recentDamage = this.damageHistory.filter(d =>
-            d.victimTeam === teamID &&
-            d.timestamp >= cutoff
+            d.victimTeam === teamID && d.timestamp >= cutoff
         );
-        
+
         if (recentDamage.length === 0) return 0;
-        
         const totalDamage = recentDamage.reduce((sum, d) => sum + d.damage, 0);
         return totalDamage / seconds; // damage per second
     }
 
-    // Check if team is bleeding resources/losing units rapidly
     isTeamBleeding(teamID, damagePerSecThreshold = 50, windowSeconds = 120) {
         return this.getDamageRateInWindow(teamID, windowSeconds) > damagePerSecThreshold;
     }
 
-    // Get metal/energy stats snapshot
+    /**
+     * Update team resource stats and push to bounded statsHistory.
+     * Fix #5: statsHistory is capped at STATS_HISTORY_MAX.
+     */
     updateTeamStats(teamID, stats) {
         const team = this.teams.get(teamID);
         if (team) {
-            team.metalStats = stats.metal || {};
+            team.metalStats  = stats.metal  || {};
             team.energyStats = stats.energy || {};
-            team.lastUpdate = Date.now();
-            
-            // Log to history for trend analysis
+            team.lastUpdate  = Date.now();
+
+            // Fix #5: bounded push
+            if (this.statsHistory.length >= STATS_HISTORY_MAX) {
+                this.statsHistory.shift();
+            }
             this.statsHistory.push({
                 timestamp: Date.now(),
-                frame: this.gameState.frame,
-                teamID: teamID,
-                stats: { ...stats }
+                frame:     this.gameState.frame,
+                teamID,
+                stats:     { ...stats }
             });
         }
     }
 
-    // Get resources history for trend analysis
     getResourceTrend(teamID, seconds = 60, resource = 'metal') {
         const cutoff = Date.now() - (seconds * 1000);
         return this.statsHistory.filter(s =>
-            s.teamID === teamID &&
-            s.timestamp >= cutoff
+            s.teamID === teamID && s.timestamp >= cutoff
         ).map(s => ({
             timestamp: s.timestamp,
-            income: s.stats[resource]?.income || 0,
-            usage: s.stats[resource]?.usage || 0,
-            storage: s.stats[resource]?.storage || 0,
-            excess: s.stats[resource]?.excess || 0
+            income:    s.stats[resource]?.income  || 0,
+            usage:     s.stats[resource]?.usage   || 0,
+            storage:   s.stats[resource]?.storage || 0,
+            excess:    s.stats[resource]?.excess  || 0
         }));
     }
 
-    // get resource status (flowing or overflowing)
     getResourceStatus(resource = 'metal') {
-        if (resource=='metal') {
-            return this.gameState.overflow_m;
-        } else if (resource=='energy') {
-            return this.gameState.overflow_e;
-        }
+        if (resource === 'metal')  return this.gameState.overflow_m;
+        if (resource === 'energy') return this.gameState.overflow_e;
         return false;
     }
 
@@ -409,40 +426,60 @@ class GameStateStore {
      */
 
     matchesCriteria(unit, criteria) {
-        if (criteria.teamID && unit.teamID !== criteria.teamID) return false;
-        if (criteria.minCost && unit.metalCost < criteria.minCost) return false;
-        if (criteria.maxCost && unit.metalCost > criteria.maxCost) return false;
-        if (criteria.tier && unit.unitTier !== criteria.tier) return false;
-        if (criteria.relation && unit.relation !== criteria.relation) return false;
-        if (criteria.inCombat && unit.inCombat !== criteria.inCombat) return false;
+        if (criteria.teamID   && unit.teamID    !== criteria.teamID)   return false;
+        if (criteria.minCost  && unit.metalCost  < criteria.minCost)   return false;
+        if (criteria.maxCost  && unit.metalCost  > criteria.maxCost)   return false;
+        if (criteria.tier     && unit.unitTier   !== criteria.tier)    return false;
+        if (criteria.relation && unit.relation   !== criteria.relation) return false;
+        if (criteria.inCombat && unit.inCombat   !== criteria.inCombat) return false;
         return true;
     }
 
-    // Reset for new game
+    /**
+     * Full reset for a new game.
+     * Also calls triggerEngine.resetForNewGame() so non-repeatable trigger
+     * firedOnce flags and per-game fire counts are cleared atomically.
+     */
     reset() {
         this.units.clear();
         this.teams.clear();
-        this.events = [];
+        this.events       = [];
         this.eventIndex.clear();
-        this.statsHistory = [];
+        this.statsHistory  = [];
         this.damageHistory = [];
+
+        // Reset game state flags (preserve identity fields until initGame fires)
+        this.gameState.gameStarted = false;
+        this.gameState.gameEnded   = false;
+        this.gameState.overflow_m  = false;
+        this.gameState.overflow_e  = false;
+        this.gameState.frame       = 0;
+        this.gameState.gameTime    = 0;
+
+        // Reset trigger per-game state
+        if (typeof triggerEngine !== 'undefined') {
+            triggerEngine.resetForNewGame();
+        }
+
+        console.log('🔄 GameStateStore: full reset complete');
     }
 
-    // Get stats summary
     getGameSummary() {
         const myTeam = this.getMyTeam();
         return {
-            gameTime: this.gameState.gameTime,
-            frame: this.gameState.frame,
-            myTeam: myTeam ? {
-                units: myTeam.unitCount,
-                totalCost: myTeam.totalMetalCost,
+            gameTime:   this.gameState.gameTime,
+            frame:      this.gameState.frame,
+            myTeam:     myTeam ? {
+                units:       myTeam.unitCount,
+                totalCost:   myTeam.totalMetalCost,
                 damageDealt: myTeam.totalDamageDealt,
                 damageTaken: myTeam.totalDamageTaken,
-                kills: myTeam.killedCount,
-                losses: myTeam.lostCount
+                kills:       myTeam.killedCount,
+                losses:      myTeam.lostCount
             } : null,
-            eventCount: this.events.length
+            eventCount:        this.events.length,
+            damageHistorySize: this.damageHistory.length,
+            statsHistorySize:  this.statsHistory.length
         };
     }
 }

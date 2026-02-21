@@ -7,12 +7,16 @@
  * - Support for multiple soundpacks with dynamic switching
  * - Per-trigger enable/disable states
  * - Cooldown management to prevent spam
+ * 
+ * Fix #3: Non-repeatable triggers now use a permanent `firedOnce` flag that
+ *         is only cleared on resetForNewGame(). The cooldown timeout no longer
+ *         re-opens them.
  */
 
 class TriggerEngine {
     constructor() {
         this.triggers = new Map();
-        this.triggerStates = new Map(); // Track: { lastFired, fireCount, cooldownActive }
+        this.triggerStates = new Map(); // Track: { lastFired, fireCount, cooldownActive, firedOnce }
         this.soundpacks = new Map(); // Store loaded soundpacks { soundpackId -> { triggerId -> audioUrl } }
         this.activeSoundpackId = null;
         
@@ -24,7 +28,6 @@ class TriggerEngine {
         this.initializeAudio();
 
         this.activeSoundpackIsOwner = false;
-
     }
 
     async loadSoundpack(soundpackId) {
@@ -38,9 +41,8 @@ class TriggerEngine {
 
             this.soundpacks.set(soundpackId, result.data.triggers);
             this.activeSoundpackId = soundpackId;
-            this.activeSoundpackIsOwner = result.data.is_owner; // Store ownership state
+            this.activeSoundpackIsOwner = result.data.is_owner;
 
-            // Persist the last used soundpack ID
             localStorage.setItem('BAR-active-soundpack-id', soundpackId);
 
             console.log(`✅ Soundpack loaded: ${result.data.title} (Owner: ${this.activeSoundpackIsOwner})`);
@@ -77,6 +79,7 @@ class TriggerEngine {
             description,
             enabled = true,
             cooldown = this.defaultCooldown,
+            repeatable = true,
             conditions = [],
             actions = []
         } = triggerDef;
@@ -89,6 +92,7 @@ class TriggerEngine {
             description: description || '',
             enabled,
             cooldown,
+            repeatable,
             conditions: Array.isArray(conditions) ? conditions : [conditions],
             actions: Array.isArray(actions) ? actions : [actions],
             createdAt: Date.now(),
@@ -99,15 +103,16 @@ class TriggerEngine {
             lastFired: null,
             fireCount: 0,
             cooldownActive: false,
+            firedOnce: false,   // Fix #3: permanent gate for non-repeatable triggers
             enabled: enabled
         });
 
-        console.log(`✅ Trigger registered: ${name} (ID: ${id})`);
+        console.log(`✅ Trigger registered: ${name} (ID: ${id}, repeatable: ${repeatable})`);
     }
 
     /**
-     * Evaluate all active triggers against an event
-     * Returns array of fired trigger IDs
+     * Evaluate all active triggers against an event.
+     * Returns array of fired trigger IDs.
      */
     evaluateAllTriggers(eventData) {
         const firedTriggers = [];
@@ -118,7 +123,11 @@ class TriggerEngine {
             // Skip if trigger is disabled
             if (!state.enabled) continue;
 
-            // Skip if on cooldown
+            // Fix #3: non-repeatable triggers that have already fired are permanently blocked
+            // until resetForNewGame() is called.
+            if (!trigger.repeatable && state.firedOnce) continue;
+
+            // Skip if on cooldown (only meaningful for repeatable triggers)
             if (state.cooldownActive) continue;
 
             // Evaluate conditions
@@ -136,7 +145,6 @@ class TriggerEngine {
                 }
             }
 
-            // Fire trigger if all conditions met
             if (conditionsMet) {
                 this.fireTrigger(triggerId, eventData);
                 firedTriggers.push(triggerId);
@@ -166,6 +174,14 @@ class TriggerEngine {
         state.fireCount++;
         state.cooldownActive = true;
 
+        // Fix #3: mark non-repeatable triggers as permanently spent
+        if (!trigger.repeatable) {
+            state.firedOnce = true;
+            // No cooldown timeout needed — firedOnce gates it permanently.
+            // Still set cooldownActive so the timeout below clears it cleanly
+            // (guards against any edge-case double-evaluation in the same tick).
+        }
+
         // Execute trigger actions
         for (const action of trigger.actions) {
             try {
@@ -178,7 +194,9 @@ class TriggerEngine {
         // Play audio cue if soundpack has audio for this trigger
         this.playAudioForTrigger(triggerId);
 
-        // Schedule cooldown reset
+        // Schedule cooldown reset.
+        // For non-repeatable triggers this just clears the cooldownActive flag;
+        // firedOnce remains true and keeps the trigger blocked for the rest of the game.
         setTimeout(() => {
             state.cooldownActive = false;
         }, trigger.cooldown);
@@ -194,12 +212,24 @@ class TriggerEngine {
     }
 
     /**
+     * Reset all per-game trigger state (fireCount, lastFired, cooldowns, firedOnce).
+     * Call this on GAME_START or when the user hits Reset.
+     * Does NOT affect enabled/disabled state or soundpack assignments.
+     */
+    resetForNewGame() {
+        for (const [triggerId, state] of this.triggerStates) {
+            state.lastFired = null;
+            state.fireCount = 0;
+            state.cooldownActive = false;
+            state.firedOnce = false;    // Fix #3: re-arm non-repeatable triggers for the new game
+        }
+        console.log('🔄 TriggerEngine: per-game state reset');
+    }
+
+    /**
      * AUDIO PLAYBACK
      */
 
-    /**
-     * Play audio file associated with a trigger in the active soundpack
-     */
     async playAudioForTrigger(triggerId) {
         if (!this.activeSoundpackId) {
             console.log(`No active soundpack for trigger ${triggerId}`);
@@ -216,17 +246,11 @@ class TriggerEngine {
         await this.playAudio(audioUrl, triggerId);
     }
 
-    /**
-     * Play audio file from URL
-     * Uses Web Audio API for better control, falls back to HTML5 Audio
-     */
     async playAudio(audioUrl, triggerId) {
         try {
-            // Try Web Audio API first (better for game overlays)
             if (this.audioContext) {
                 await this.playAudioViaWebAudio(audioUrl, triggerId);
             } else {
-                // Fallback to HTML5 Audio element
                 this.playAudioViaHTML5(audioUrl, triggerId);
             }
         } catch (err) {
@@ -234,19 +258,12 @@ class TriggerEngine {
         }
     }
 
-    /**
-     * Play audio using Web Audio API
-     */
     async playAudioViaWebAudio(audioUrl, triggerId) {
         try {
-            // Check cache first
             if (!this.audioCache.has(audioUrl)) {
                 console.log(`📥 Loading audio: ${audioUrl}`);
-                
-                // Fetch and decode audio
                 const response = await fetch(audioUrl);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
                 const arrayBuffer = await response.arrayBuffer();
                 const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
                 this.audioCache.set(audioUrl, audioBuffer);
@@ -261,36 +278,26 @@ class TriggerEngine {
             source.connect(gainNode);
             gainNode.connect(this.audioContext.destination);
 
-            // Apply master volume
             const masterVolume = document.getElementById('master-volume')?.value || 80;
-            gainNode.gain.value = (masterVolume / 100) * 0.8; // 0.8 = 80% to prevent clipping
+            gainNode.gain.value = (masterVolume / 100) * 0.8;
 
             source.start(0);
-
             console.log(`🔊 Playing audio for trigger ${triggerId}`);
         } catch (err) {
             console.error(`Web Audio API error:`, err);
-            // Fall back to HTML5
             this.playAudioViaHTML5(audioUrl, triggerId);
         }
     }
 
-    /**
-     * Play audio using HTML5 Audio element (fallback)
-     */
     playAudioViaHTML5(audioUrl, triggerId) {
         try {
             const audio = new Audio();
-            
-            // Get master volume
             const masterVolume = document.getElementById('master-volume')?.value || 80;
             audio.volume = Math.min(1, (masterVolume / 100) * 0.8);
-
             audio.src = audioUrl;
             audio.play().catch(err => {
                 console.error(`Audio playback error:`, err);
             });
-
             console.log(`🔊 Playing audio for trigger ${triggerId}`);
         } catch (err) {
             console.error(`Error creating audio element:`, err);
@@ -301,32 +308,27 @@ class TriggerEngine {
      * SOUNDPACK MANAGEMENT
      */
 
-    
-
     async switchSoundpack(soundpackId) {
         try {
             if (!this.soundpacks.has(soundpackId)) {
                 await this.loadSoundpack(soundpackId);
             } else {
                 this.activeSoundpackId = soundpackId;
-                // Optionally update owner state if cached
             }
 
             localStorage.setItem('BAR-active-soundpack-id', soundpackId);
 
-            // DISPATCH ONCE: All UI components should listen to this
             window.dispatchEvent(new CustomEvent('soundpackChanged', {
                 detail: { 
                     soundpackId: this.activeSoundpackId, 
                     isOwner: this.activeSoundpackIsOwner 
                 }
             }));
-        } catch (err) { console.error('Error switching soundpack:', err); }
+        } catch (err) {
+            console.error('Error switching soundpack:', err);
+        }
     }
 
-    /**
-     * Get mapping for current soundpack
-     */
     getActiveSoundpackMapping() {
         if (!this.activeSoundpackId) return null;
         return this.soundpacks.get(this.activeSoundpackId);
@@ -336,9 +338,6 @@ class TriggerEngine {
      * TRIGGER STATE MANAGEMENT
      */
 
-    /**
-     * Enable or disable a specific trigger
-     */
     setTriggerEnabled(triggerId, enabled) {
         const state = this.triggerStates.get(triggerId);
         if (state) {
@@ -347,9 +346,6 @@ class TriggerEngine {
         }
     }
 
-    /**
-     * Toggle trigger enable state
-     */
     toggleTrigger(triggerId) {
         const state = this.triggerStates.get(triggerId);
         if (state) {
@@ -359,17 +355,11 @@ class TriggerEngine {
         return null;
     }
 
-    /**
-     * Check if trigger is enabled
-     */
     isTriggerEnabled(triggerId) {
         const state = this.triggerStates.get(triggerId);
         return state ? state.enabled : false;
     }
 
-    /**
-     * Get all triggers with their states
-     */
     getAllTriggers() {
         const result = [];
         for (const [id, trigger] of this.triggers) {
@@ -387,9 +377,6 @@ class TriggerEngine {
      * STATISTICS & DEBUGGING
      */
 
-    /**
-     * Get statistics for a specific trigger
-     */
     getTriggerStats(triggerId) {
         const trigger = this.triggers.get(triggerId);
         const state = this.triggerStates.get(triggerId);
@@ -400,15 +387,14 @@ class TriggerEngine {
             id: triggerId,
             name: trigger.name,
             enabled: state.enabled,
+            repeatable: trigger.repeatable,
+            firedOnce: state.firedOnce,
             fireCount: state.fireCount,
             lastFired: state.lastFired ? new Date(state.lastFired) : null,
             cooldownActive: state.cooldownActive
         };
     }
 
-    /**
-     * Get all trigger statistics
-     */
     getAllTriggerStats() {
         const stats = [];
         for (const triggerId of this.triggers.keys()) {
@@ -417,9 +403,6 @@ class TriggerEngine {
         return stats;
     }
 
-    /**
-     * Clear all cached audio buffers
-     */
     clearAudioCache() {
         this.audioCache.clear();
         console.log('🗑️ Audio cache cleared');
@@ -429,9 +412,6 @@ class TriggerEngine {
      * TESTING UTILITIES
      */
 
-    /**
-     * Test trigger by manually evaluating it
-     */
     testTrigger(triggerId, testEventData = {}) {
         const trigger = this.triggers.get(triggerId);
         if (!trigger) {
@@ -441,7 +421,6 @@ class TriggerEngine {
 
         console.log(`🧪 Testing trigger: ${trigger.name}`);
 
-        // Evaluate conditions with test data
         let conditionsMet = true;
         for (const condition of trigger.conditions) {
             try {
@@ -469,11 +448,7 @@ class TriggerEngine {
 // Singleton instance
 const triggerEngine = new TriggerEngine();
 
-// const savedPackId = localStorage.getItem('BAR-active-soundpack-id') || 1;
-// triggerEngine.loadSoundpack(savedPackId);
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Small delay to ensure triggersManager.js listener is attached
     setTimeout(() => {
         const savedPackId = localStorage.getItem('BAR-active-soundpack-id') || 1;
         triggerEngine.switchSoundpack(parseInt(savedPackId));
