@@ -273,6 +273,11 @@ class EventHandler {
             data.attackerTeam
         );
 
+        // Update widgets immediately to reflect destruction
+        if (typeof statWidgets !== 'undefined') {
+            statWidgets.tick();
+        }
+
         console.log('💀 Unit destroyed:', {
             victim: data.unitName,
             attacker: data.attackerName,
@@ -321,6 +326,11 @@ class EventHandler {
                 uiManager.updateTeamStatsPanel(myTeam, data);
                 uiManager.updateGameStatus(data.gameTime, gameState.gameState);
             }
+        }
+
+        // Keep streaming widgets in sync with resource/damage stats
+        if (typeof statWidgets !== 'undefined') {
+            statWidgets.tick();
         }
     }
 
