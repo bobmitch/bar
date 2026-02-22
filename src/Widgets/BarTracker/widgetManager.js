@@ -16,20 +16,34 @@
  *   onTrigger:      (def, inner, triggerData) => void   [trigger type only]
  * }
  *
- * Edit Mode behaviour (replaces the old middle-click toggle):
+ * Edit Mode behaviour:
+ *   MOUSE
  *   • Any mouse movement on the streaming canvas wakes "edit mode"
  *   • After IDLE_TIMEOUT_MS of no movement, edit mode sleeps (OBS-clean)
  *   • While awake: HUD bar fades in, disabled widgets appear ghosted,
  *     ALL widgets get a dashed outline so you can find them
  *   • Middle-click anywhere → toggle LOCK (keeps edit mode on permanently
  *     regardless of idle timeout — middle-click again to unlock)
+ *   TOUCH
+ *   • Any touch on the streaming canvas wakes edit mode (same idle timer)
+ *   • Long-press (500 ms) on canvas background → toggle LOCK (replaces middle-click)
+ *   • Long-press (500 ms) on a widget → toggle enable/disable (replaces dblclick)
+ *   • Two-finger tap on canvas background → navigate back (replaces right-click)
+ *
+ * Drag:
+ *   MOUSE — mousedown / mousemove / mouseup (left button only)
+ *   TOUCH — touchstart / touchmove / touchend (single finger)
+ *
+ * Scale:
+ *   MOUSE — scroll wheel on widget
+ *   TOUCH — two-finger pinch on widget
  *
  * Snap-to-edge:
  *   • While dragging, each widget's left/centre/right and top/centre/bottom
  *     edges are compared against all other widgets' edges.
  *   • When within SNAP_THRESHOLD px, the widget snaps to exact alignment
  *     and a cyan guide line appears on the matching axis.
- *   • Guide lines clear on mouseup.
+ *   • Guide lines clear on drag-end.
  */
 class WidgetManager {
     constructor() {
@@ -39,16 +53,17 @@ class WidgetManager {
         this.container    = null;
 
         // Edit-mode state
-        this._isEditing   = false;   // true while mouse is active / locked
-        this._editLocked  = false;   // true when user has middle-clicked to pin
+        this._isEditing   = false;   // true while interaction is active / locked
+        this._editLocked  = false;   // true when user has pinned edit mode on
         this._idleTimer   = null;
 
-        this.STORAGE_KEY     = 'bar-widget-layout-v1';
-        this.MIN_SCALE       = 0.5;
-        this.MAX_SCALE       = 2.0;
-        this.SCALE_STEP      = 0.1;
-        this.IDLE_TIMEOUT_MS = 2500; // ms of no mouse movement → sleep
-        this.SNAP_THRESHOLD  = 10;   // px — edge proximity that triggers a snap
+        this.STORAGE_KEY        = 'bar-widget-layout-v1';
+        this.MIN_SCALE          = 0.5;
+        this.MAX_SCALE          = 2.0;
+        this.SCALE_STEP         = 0.1;
+        this.IDLE_TIMEOUT_MS    = 2500;  // ms of no interaction → sleep
+        this.SNAP_THRESHOLD     = 10;    // px — edge proximity that triggers snap
+        this.LONG_PRESS_MS      = 500;   // ms hold to trigger long-press actions
 
         this._loadLayout();
         this._bindGlobalEvents();
@@ -117,6 +132,8 @@ class WidgetManager {
         el.id = id;
         el.dataset.wmId = id;
         el.style.fontSize = `${state.scale}rem`;
+        // Prevent native touch actions (scroll, zoom) interfering with drag/pinch
+        el.style.touchAction = 'none';
         this._applyPosition(el, state);
         this._applyEnabled(el, state);
 
@@ -138,14 +155,12 @@ class WidgetManager {
 
     _applyEnabled(el, state) {
         if (state.enabled) {
-            // Fully visible — strip every inline override so CSS takes over cleanly
             el.classList.remove('wm-disabled', 'wm-show-disabled');
             el.style.display       = '';
             el.style.opacity       = '';
             el.style.visibility    = '';
             el.style.pointerEvents = '';
         } else {
-            // Disabled: only show (ghosted) when edit mode is awake
             el.classList.add('wm-disabled');
             const show = this._isEditing === true;
             el.classList.toggle('wm-show-disabled', show);
@@ -156,22 +171,19 @@ class WidgetManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // EDIT MODE — mouse motion detection + idle sleep + lock
+    // EDIT MODE — interaction detection + idle sleep + lock
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Called on every mousemove while in streaming view.
+     * Called on any mouse movement or touch while in streaming view.
      * Wakes edit mode and restarts the idle countdown (unless locked).
      */
-    _onMouseActivity() {
+    _onInteractionActivity() {
         if (!this._isEditing) {
             this._isEditing = true;
             this._applyEditMode(true);
         }
-
-        // If locked, don't arm the idle timer — stay awake indefinitely
         if (this._editLocked) return;
-
         clearTimeout(this._idleTimer);
         this._idleTimer = setTimeout(() => {
             this._isEditing = false;
@@ -180,20 +192,19 @@ class WidgetManager {
     }
 
     /**
-     * Toggle the edit-mode lock (middle-click).
-     * Locked = edit UI stays visible until unlocked, ignoring idle timer.
+     * Toggle the edit-mode lock.
+     * Mouse: middle-click anywhere | Touch: long-press on canvas background
+     * Locked = edit UI stays visible until unlocked.
      */
     _toggleEditLock() {
         this._editLocked = !this._editLocked;
 
         if (this._editLocked) {
-            // Lock on — wake immediately and cancel any pending sleep
             clearTimeout(this._idleTimer);
             this._isEditing = true;
             this._applyEditMode(true);
-            this._flashToast('🔒 Edit mode locked — middle-click to unlock');
+            this._flashToast('🔒 Edit mode locked — long-press canvas to unlock');
         } else {
-            // Lock off — restart the idle timer from now
             this._flashToast('🔓 Edit mode unlocked — auto-hides after idle');
             clearTimeout(this._idleTimer);
             this._idleTimer = setTimeout(() => {
@@ -202,7 +213,6 @@ class WidgetManager {
             }, this.IDLE_TIMEOUT_MS);
         }
 
-        // Update HUD lock indicator if present
         const lockBtn = document.getElementById('wm-lock-btn');
         if (lockBtn) {
             lockBtn.textContent = this._editLocked ? '🔒 LOCKED' : '🔓 LOCK';
@@ -212,23 +222,16 @@ class WidgetManager {
 
     /**
      * Apply or remove all edit-mode visual changes.
-     * @param {boolean} active
      */
     _applyEditMode(active) {
-        // HUD bar
         const hud = document.getElementById('wm-hud');
         if (hud) hud.classList.toggle('wm-hud-visible', active);
 
-        // Disabled-widgets hint strip
         const hint = document.getElementById('wm-disabled-hint');
         if (hint) hint.classList.toggle('wm-hint-visible', active);
 
-        // All widget instances
         for (const [, inst] of this.instances) {
-            // Outline on ALL widgets so you can find them while editing
             inst.el.classList.toggle('wm-editing', active);
-
-            // Disabled widgets: show ghosted when editing, hide when sleeping
             if (!inst.state.enabled) {
                 inst.el.classList.toggle('wm-show-disabled', active);
                 inst.el.style.display       = active ? '' : 'none';
@@ -242,13 +245,15 @@ class WidgetManager {
     // ─────────────────────────────────────────────────────────────────────────
 
     _bindGlobalEvents() {
-        // Mouse movement → wake edit mode (streaming view only)
+        // ── MOUSE ────────────────────────────────────────────────────────────
+
+        // Mouse movement → wake edit mode
         document.addEventListener('mousemove', () => {
             if (document.body.dataset.view !== 'streaming') return;
-            this._onMouseActivity();
+            this._onInteractionActivity();
         });
 
-        // Middle-click anywhere → toggle edit-mode lock
+        // Middle-click → toggle edit-mode lock
         document.addEventListener('mousedown', (e) => {
             if (document.body.dataset.view !== 'streaming') return;
             if (e.button !== 1) return;
@@ -263,14 +268,14 @@ class WidgetManager {
             if (typeof uiManager !== 'undefined') uiManager.switchView('standard');
         });
 
-        // Double-click on canvas background (not a widget) → test trigger
+        // Double-click on canvas background → test trigger
         document.addEventListener('dblclick', (e) => {
             if (document.body.dataset.view !== 'streaming') return;
             if (e.target.closest('.wm-widget')) return;
             this.emitTrigger({ name: 'TEST TRIGGER', id: 'test' });
         });
 
-        // HUD back button
+        // HUD buttons
         document.addEventListener('click', (e) => {
             if (e.target.id === 'wm-back-btn') {
                 if (typeof uiManager !== 'undefined') uiManager.switchView('standard');
@@ -279,17 +284,83 @@ class WidgetManager {
                 this._toggleEditLock();
             }
         });
+
+        // ── TOUCH — global canvas gestures ───────────────────────────────────
+        // We attach to document so we catch touches anywhere in streaming view.
+
+        let _globalTouchStartTime  = 0;
+        let _globalTouchCount      = 0;
+        let _globalLongPressTimer  = null;
+        let _globalLongPressFired  = false;
+
+        document.addEventListener('touchstart', (e) => {
+            if (document.body.dataset.view !== 'streaming') return;
+
+            // Wake edit mode on any touch
+            this._onInteractionActivity();
+
+            _globalTouchCount = e.touches.length;
+
+            // Two-finger tap → navigate back (replaces right-click)
+            if (_globalTouchCount === 2 && !e.target.closest('.wm-widget')) {
+                e.preventDefault();
+                // Short two-finger tap: if both fingers lift quickly it's a back nav;
+                // handled in touchend below.
+                _globalTouchStartTime = Date.now();
+            }
+
+            // Long-press on canvas background → toggle edit lock (replaces middle-click)
+            if (_globalTouchCount === 1 && !e.target.closest('.wm-widget')) {
+                _globalLongPressFired = false;
+                clearTimeout(_globalLongPressTimer);
+                _globalLongPressTimer = setTimeout(() => {
+                    if (document.body.dataset.view !== 'streaming') return;
+                    _globalLongPressFired = true;
+                    this._toggleEditLock();
+                    // Brief haptic pulse if available
+                    if (navigator.vibrate) navigator.vibrate(30);
+                }, this.LONG_PRESS_MS);
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (document.body.dataset.view !== 'streaming') return;
+            // Any movement cancels the long-press timer
+            clearTimeout(_globalLongPressTimer);
+        }, { passive: true });
+
+        document.addEventListener('touchend', (e) => {
+            if (document.body.dataset.view !== 'streaming') return;
+            clearTimeout(_globalLongPressTimer);
+
+            // Two-finger quick tap → back to standard view
+            if (_globalTouchCount === 2
+                && !e.target.closest('.wm-widget')
+                && (Date.now() - _globalTouchStartTime) < 300
+                && !_globalLongPressFired) {
+                e.preventDefault();
+                if (typeof uiManager !== 'undefined') uiManager.switchView('standard');
+            }
+
+            _globalTouchCount = e.touches.length;
+        }, { passive: false });
+
+        document.addEventListener('touchcancel', () => {
+            clearTimeout(_globalLongPressTimer);
+            _globalTouchCount = 0;
+        }, { passive: true });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PER-WIDGET INTERACTIONS (drag, scroll-to-scale, dblclick-to-toggle)
+    // PER-WIDGET INTERACTIONS (drag, scale, enable-toggle)
     // ─────────────────────────────────────────────────────────────────────────
 
     _bindWidgetInteractions(id, el, state) {
-        let dragging = false, ox, oy, sx, sy;
         let scaleTimer = null;
 
-        // ── Drag ────────────────────────────────────────────────────────────
+        // ── MOUSE drag ───────────────────────────────────────────────────────
+        let dragging = false, ox, oy, sx, sy;
+
         el.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
             dragging = true;
@@ -299,7 +370,7 @@ class WidgetManager {
             e.preventDefault();
         });
 
-        const onMove = (e) => {
+        const onMouseMove = (e) => {
             if (!dragging) return;
             const rawX = sx + (e.clientX - ox);
             const rawY = sy + (e.clientY - oy);
@@ -310,7 +381,7 @@ class WidgetManager {
             this._updateGuides(guideX, guideY);
         };
 
-        const onUp = () => {
+        const onMouseUp = () => {
             if (!dragging) return;
             dragging = false;
             el.classList.remove('wm-dragging');
@@ -318,10 +389,10 @@ class WidgetManager {
             this._saveLayout();
         };
 
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
 
-        // ── Scroll to scale ─────────────────────────────────────────────────
+        // ── MOUSE scroll to scale ────────────────────────────────────────────
         el.addEventListener('wheel', (e) => {
             e.preventDefault();
             const dir = e.deltaY < 0 ? 1 : -1;
@@ -340,27 +411,162 @@ class WidgetManager {
             this._saveLayout();
         }, { passive: false });
 
-        // ── Double-click to enable/disable ──────────────────────────────────
+        // ── MOUSE double-click to enable/disable ─────────────────────────────
         el.addEventListener('dblclick', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            state.enabled = !state.enabled;
-            this._applyEnabled(el, state);
-            this._saveLayout();
-            this._flashToast(state.enabled
-                ? '✓ Widget enabled'
-                : '✕ Widget hidden — move mouse to reveal');
+            this._toggleWidgetEnabled(el, state);
         });
+
+        // ── TOUCH drag + pinch-to-scale + long-press-to-toggle ───────────────
+        let touchDragging       = false;
+        let touchOx, touchOy, touchSx, touchSy;
+        let pinchStartDist      = null;
+        let pinchStartScale     = null;
+        let widgetLongPressTimer = null;
+        let widgetLongPressFired = false;
+        let touchMoved          = false;
+
+        el.addEventListener('touchstart', (e) => {
+            e.stopPropagation(); // don't bubble to global canvas handler
+
+            this._onInteractionActivity(); // wake edit mode
+
+            if (e.touches.length === 1) {
+                // Single finger — start drag candidate + long-press timer
+                const t = e.touches[0];
+                touchDragging       = false;
+                touchMoved          = false;
+                widgetLongPressFired = false;
+                touchOx = t.clientX; touchOy = t.clientY;
+                touchSx = state.x;   touchSy = state.y;
+
+                clearTimeout(widgetLongPressTimer);
+                widgetLongPressTimer = setTimeout(() => {
+                    if (!touchMoved) {
+                        widgetLongPressFired = true;
+                        touchDragging = false;
+                        if (navigator.vibrate) navigator.vibrate(30);
+                        this._toggleWidgetEnabled(el, state);
+                    }
+                }, this.LONG_PRESS_MS);
+
+            } else if (e.touches.length === 2) {
+                // Two fingers — start pinch, cancel drag & long-press
+                clearTimeout(widgetLongPressTimer);
+                touchDragging    = false;
+                el.classList.remove('wm-dragging');
+                this._clearGuides();
+
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                pinchStartDist  = Math.hypot(dx, dy);
+                pinchStartScale = state.scale;
+            }
+
+            e.preventDefault();
+        }, { passive: false });
+
+        el.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            this._onInteractionActivity();
+
+            if (e.touches.length === 1 && !widgetLongPressFired) {
+                const t = e.touches[0];
+                const dx = t.clientX - touchOx;
+                const dy = t.clientY - touchOy;
+
+                // Only commit to drag once finger has moved >4px (avoids accidental drag on tap)
+                if (!touchDragging && Math.hypot(dx, dy) > 4) {
+                    touchDragging = true;
+                    touchMoved    = true;
+                    clearTimeout(widgetLongPressTimer); // movement cancels long-press
+                    el.classList.add('wm-dragging');
+                }
+
+                if (touchDragging) {
+                    const rawX = touchSx + dx;
+                    const rawY = touchSy + dy;
+                    const { x, y, guideX, guideY } = this._applySnap(id, rawX, rawY);
+                    state.x = x;
+                    state.y = y;
+                    this._applyPosition(el, state);
+                    this._updateGuides(guideX, guideY);
+                }
+
+            } else if (e.touches.length === 2 && pinchStartDist !== null) {
+                // Pinch-to-scale
+                const dx   = e.touches[0].clientX - e.touches[1].clientX;
+                const dy   = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                const ratio = dist / pinchStartDist;
+                const raw   = pinchStartScale * ratio;
+
+                state.scale = +(Math.min(this.MAX_SCALE,
+                    Math.max(this.MIN_SCALE, Math.round(raw / this.SCALE_STEP) * this.SCALE_STEP)
+                ).toFixed(1));
+                el.style.fontSize = `${state.scale}rem`;
+
+                el.dataset.scaleHint = `×${state.scale.toFixed(1)}`;
+                el.classList.remove('wm-scale-hint');
+                void el.offsetWidth;
+                el.classList.add('wm-scale-hint');
+                clearTimeout(scaleTimer);
+                scaleTimer = setTimeout(() => el.classList.remove('wm-scale-hint'), 1000);
+            }
+        }, { passive: false });
+
+        el.addEventListener('touchend', (e) => {
+            e.stopPropagation();
+            clearTimeout(widgetLongPressTimer);
+
+            if (touchDragging) {
+                touchDragging = false;
+                el.classList.remove('wm-dragging');
+                this._clearGuides();
+                this._saveLayout();
+            }
+
+            if (e.touches.length < 2) {
+                // Pinch ended — save whatever scale we landed on
+                if (pinchStartDist !== null) {
+                    this._saveLayout();
+                }
+                pinchStartDist  = null;
+                pinchStartScale = null;
+            }
+
+            touchOx = touchOy = touchSx = touchSy = undefined;
+        }, { passive: false });
+
+        el.addEventListener('touchcancel', () => {
+            clearTimeout(widgetLongPressTimer);
+            touchDragging  = false;
+            pinchStartDist = null;
+            el.classList.remove('wm-dragging');
+            this._clearGuides();
+        }, { passive: true });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // WIDGET ENABLE / DISABLE (shared by dblclick and long-press)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    _toggleWidgetEnabled(el, state) {
+        state.enabled = !state.enabled;
+        this._applyEnabled(el, state);
+        this._saveLayout();
+        this._flashToast(state.enabled
+            ? '✓ Widget enabled'
+            : '✕ Widget hidden — long-press canvas to reveal');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // SNAP-TO-EDGE
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Create the two guide line divs (one vertical, one horizontal).
-     * Called once in mountAll() — reused for every subsequent drag.
-     */
     _initSnapGuides() {
         this._guideV = document.createElement('div');
         this._guideV.className = 'wm-snap-guide wm-snap-guide-v';
@@ -371,11 +577,6 @@ class WidgetManager {
         this.container.appendChild(this._guideH);
     }
 
-    /**
-     * Collect all X and Y snap lines from every widget except the one
-     * currently being dragged. Each widget contributes 3 lines per axis:
-     * left/centre/right and top/centre/bottom.
-     */
     _getSnapLines(excludeId) {
         const xLines = [];
         const yLines = [];
@@ -400,11 +601,6 @@ class WidgetManager {
         return { xLines, yLines };
     }
 
-    /**
-     * Given a raw (unsnapped) candidate position, check all edges of the
-     * dragged widget against the collected snap lines. Returns the (possibly
-     * adjusted) position plus guide line coordinates for display.
-     */
     _applySnap(id, rawX, rawY) {
         const el = this.instances.get(id).el;
         const r  = el.getBoundingClientRect();
@@ -417,7 +613,6 @@ class WidgetManager {
         let snappedX = rawX, guideX = null;
         let snappedY = rawY, guideY = null;
 
-        // ── X axis: left edge, centre, right edge ───────────────────────────
         let bestX = T + 1;
         for (const offset of [0, w / 2, w]) {
             for (const target of xLines) {
@@ -431,7 +626,6 @@ class WidgetManager {
         }
         if (bestX > T) { snappedX = rawX; guideX = null; }
 
-        // ── Y axis: top edge, centre, bottom edge ───────────────────────────
         let bestY = T + 1;
         for (const offset of [0, h / 2, h]) {
             for (const target of yLines) {
@@ -448,11 +642,6 @@ class WidgetManager {
         return { x: snappedX, y: snappedY, guideX, guideY };
     }
 
-    /**
-     * Position and show/hide the guide lines.
-     * @param {number|null} guideX  — container-relative px for vertical line
-     * @param {number|null} guideY  — container-relative px for horizontal line
-     */
     _updateGuides(guideX, guideY) {
         if (guideX !== null) {
             this._guideV.style.left = `${guideX}px`;
@@ -468,7 +657,6 @@ class WidgetManager {
         }
     }
 
-    /** Hide both guide lines — called on mouseup. */
     _clearGuides() {
         this._guideV.classList.remove('wm-snap-active');
         this._guideH.classList.remove('wm-snap-active');

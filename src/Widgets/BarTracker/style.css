@@ -1220,3 +1220,44 @@ body[data-view="streaming"] {
     50%       { opacity: 0.5; }
 }
 
+
+/* ============================================================
+   TOUCH SUPPORT — streaming view
+   Prevents the browser's native scroll/zoom/callout from
+   interfering with widget drag and pinch-to-scale gestures.
+   These rules are appended to style.css.
+   ============================================================ */
+
+/* Block all native touch handling on the full streaming canvas so
+   single-finger drag and two-finger pinch are fully owned by JS. */
+#streaming-view,
+#streaming-widgets-container {
+    touch-action: none;
+}
+
+/* Individual widgets also set touch-action:none inline (via JS),
+   but this CSS rule acts as a safe fallback. */
+.wm-widget {
+    touch-action: none;
+    /* Suppress the iOS long-press callout menu on widgets */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Slightly larger hit-target for touch — makes widgets easier to grab
+   on a tablet without changing their visible size. */
+@media (pointer: coarse) {
+    .wm-widget {
+        /* Expand tap target by 8px on each side invisibly */
+        padding: 8px;
+        margin: -8px;
+    }
+
+    /* Scale the HUD buttons up slightly for fat-finger usability */
+    #wm-hud button {
+        min-height: 2.4rem;
+        padding: 0 1rem;
+        font-size: 0.8rem;
+    }
+}
