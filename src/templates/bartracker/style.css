@@ -124,4 +124,7 @@ body.alias_home {
     a { color: #0969da; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .note { background: #fff8c5; border: 1px solid #d4a72c; padding: 15px; border-radius: 6px; margin-top: 20px; }
+    p, u {
+        margin-top:1rem;
+    }
 }
