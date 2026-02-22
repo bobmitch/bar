@@ -255,13 +255,13 @@ class GameStateStore {
             if (attacker) attacker.damageDealt += damage;
         }
 
-        // Update team aggregates (O(1) running counters)
-        if (attackerTeam != null && attackerTeam !== -1 && this.teams.has(attackerTeam)) {
-            this.teams.get(attackerTeam).totalDamageDealt += damage;
-        }
-        if (this.teams.has(unit.teamID)) {
-            this.teams.get(unit.teamID).totalDamageTaken += damage;
-        }
+        // NOTE: team.totalDamageDealt and team.totalDamageTaken are NOT updated here.
+        // UnitDamaged events do not carry attackerTeam, and the Spring engine's
+        // cumulative damage_dealt / damage_received values can differ from a naive
+        // sum of individual hit events (shields, overkill, self-damage, etc.).
+        // FullStatsUpdate is the sole authoritative source for team-level damage
+        // totals — see updateTeamStats(). Per-unit counters above remain for triggers.
+
 
         // Fix #5: push to bounded damageHistory — drop oldest if at cap
         if (this.damageHistory.length >= DAMAGE_HISTORY_MAX) {
