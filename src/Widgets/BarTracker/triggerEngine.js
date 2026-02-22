@@ -104,7 +104,8 @@ class TriggerEngine {
             fireCount: 0,
             cooldownActive: false,
             firedOnce: false,   // Fix #3: permanent gate for non-repeatable triggers
-            enabled: enabled
+            enabled: enabled,
+            vars:{} // Placeholder for any future per-trigger variables or state needed by actions
         });
 
         console.log(`✅ Trigger registered: ${name} (ID: ${id}, repeatable: ${repeatable})`);
@@ -134,7 +135,7 @@ class TriggerEngine {
             let conditionsMet = true;
             for (const condition of trigger.conditions) {
                 try {
-                    if (!condition(eventData)) {
+                    if (!condition(eventData, state.vars)) {
                         conditionsMet = false;
                         break;
                     }
@@ -187,7 +188,7 @@ class TriggerEngine {
         let context = null;
         for (const action of trigger.actions) {
             try {
-                const result = action(eventData);
+                const result = action(eventData, state.vars);
                 if (result != null) context = result;
             } catch (err) {
                 console.error(`Error executing action for trigger ${triggerId}:`, err);
