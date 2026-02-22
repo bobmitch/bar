@@ -390,6 +390,17 @@ class GameStateStore {
             team.energyStats = stats.energy || {};
             team.lastUpdate  = Date.now();
 
+            // FullStatsUpdate is the authoritative cumulative source for combat stats.
+            // UnitDamaged events don't include attackerTeam so team.totalDamageDealt
+            // can never be incremented via damageUnit() — this is the correct path.
+            if (stats.combat) {
+                const c = stats.combat;
+                if (c.damage_dealt    != null) team.totalDamageDealt = c.damage_dealt;
+                if (c.damage_received != null) team.totalDamageTaken = c.damage_received;
+                if (c.units_killed    != null) team.killedCount       = c.units_killed;
+                if (c.units_died      != null) team.lostCount         = c.units_died;
+            }
+
             // Fix #5: bounded push
             if (this.statsHistory.length >= STATS_HISTORY_MAX) {
                 this.statsHistory.shift();
