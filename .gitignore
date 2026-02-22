@@ -4,4 +4,6 @@ cmslog.txt
 /pdfs/
 *.zip
 *.tar
+*.mov
+*.mp4
 /src/audio/
