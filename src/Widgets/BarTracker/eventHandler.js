@@ -406,7 +406,8 @@ class EventHandler {
                 id: triggerId,
                 name: trigger.name, 
                 event: eventRecord.data.event,
-                context: state?.lastContext ?? null
+                context: state?.lastContext ?? null,
+                image_src: trigger.image_src ?? null 
             });
         }
     }

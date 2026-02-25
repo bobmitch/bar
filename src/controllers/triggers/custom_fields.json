@@ -49,6 +49,15 @@
 			"description":"A CSV of valid JS anonymous functions that are called upon trigger firing. Each function will be called with (event) parameters. Can be empty." 
 		},
 		{
+			"type":"Text",
+			"label": "Image URL",
+			"name": "image_src",
+			"id": "image_src",
+			"required": false,
+			"input_type": "text",
+			"description":"An optional image to show when this trigger fires. Can be left blank. Use a transparent gif for best effect if streaming."
+		},
+		{
 			"type": "Image",
 			"name": "icon",
 			"id": "icon",

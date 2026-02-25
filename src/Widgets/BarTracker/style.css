@@ -1261,3 +1261,46 @@ body[data-view="streaming"] {
         font-size: 0.8rem;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMAGE DISPLAY WIDGET  (wm-type-image-display)
+   Append to the streaming / widget section of style.css
+═══════════════════════════════════════════════════════════════════════════ */
+
+.wm-type-image-display .wm-inner {
+    /* No min/max width — image dictates its own natural size, scaled by font-size
+       via em units so the scroll-to-scale behaviour works identically to other
+       widgets. Override with a fixed px value here if you want a capped size. */
+    pointer-events: none;
+}
+
+/* The frame is the fade target — opacity toggled by JS */
+.wid-frame {
+    opacity      : 0;
+    transition   : opacity 300ms ease;   /* IMAGE_FADE_MS — keep in sync with JS const */
+    border-radius: var(--radius, 4px);
+    overflow     : hidden;
+    /* Optional subtle drop-shadow so the GIF reads clearly over game footage */
+    filter       : drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+    line-height  : 0;   /* collapse inline image gap */
+}
+
+/* The image itself */
+.wid-img {
+    display     : block;
+    max-width   : 30em;   /* scales with widget font-size; tweak freely */
+    max-height  : 20em;
+    width       : auto;
+    height      : auto;
+    border-radius: var(--radius, 4px);
+    pointer-events: none;
+    user-select : none;
+    object-fit:contain;
+    object-position:center bottom;
+}
+
+#image-display {
+    width:30em;
+    height:20em;
+    /* give size for initial load before image is loaded, so widget is grab-able and shows scale hint */
+}

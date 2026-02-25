@@ -22,6 +22,10 @@ function _bwFmt(n) {
 const TRIGGER_DISPLAY_MS = 4500;
 const TRIGGER_MAX_STACK  = 8;
 
+// image widget timing (also used in CSS, keep in sync)
+const IMAGE_DISPLAY_MS    = 2000;   // how long the image stays visible
+const IMAGE_FADE_MS       = 300;    // CSS transition duration (keep in sync with CSS)
+
 widgetManager.register({
     id: 'trigger-feed',
     type: 'trigger',
@@ -196,6 +200,74 @@ for (const s of STAT_DEFS) {
         });
     })(s);
 }
+
+
+widgetManager.register({
+    id             : 'image-display',
+    type           : 'image-display',
+    label          : 'Image Display',
+    defaultX       : 400,
+    defaultY       : 200,
+    defaultScale   : 1.0,
+    defaultEnabled : true,
+
+    /** Called once at mount time — build the DOM skeleton. */
+    render(def, inner) {
+        inner.innerHTML = `
+            <div class="wid-frame">
+                <img class="wid-img" src="" alt="" draggable="false" />
+            </div>
+        `;
+        // Start hidden; opacity driven by .wid-visible class
+        inner.querySelector('.wid-frame').style.opacity = '0';
+        inner.querySelector('.wid-img').style.display   = 'none';
+
+        // Stash timer ref on the def so re-entrant fires cancel correctly
+        def._hideTimer = null;
+    },
+
+    /** Called each time a trigger fires (from widgetManager.emitTrigger). */
+    onTrigger(def, inner, triggerData) {
+        // Only act when this trigger carries an image
+        const src = triggerData.image_src;
+        if (!src) return;
+
+        const frame = inner.querySelector('.wid-frame');
+        const img   = inner.querySelector('.wid-img');
+        if (!frame || !img) return;
+
+        // Cancel any in-progress hide timer so we restart the 2s window
+        if (def._hideTimer) {
+            clearTimeout(def._hideTimer);
+            def._hideTimer = null;
+        }
+
+        // Swap src if it changed (re-triggers GIF from frame 1 by forcing reload)
+        if (img.src !== src) {
+            img.style.display = 'none';
+            img.src = '';
+            // A tiny delay lets the browser drop the previous decode before reloading
+            requestAnimationFrame(() => {
+                img.src           = src;
+                img.style.display = '';
+            });
+        } else {
+            img.style.display = '';
+        }
+
+        // Fade in
+        requestAnimationFrame(() => {
+            frame.style.opacity    = '1';
+            frame.style.transition = `opacity ${IMAGE_FADE_MS}ms ease`;
+        });
+
+        // Schedule fade-out
+        def._hideTimer = setTimeout(() => {
+            frame.style.opacity = '0';
+            def._hideTimer = null;
+        }, IMAGE_DISPLAY_MS);
+    }
+});
 
 // ── Public tick — call after any gameState update ─────────────────────────────
 const statWidgets = {

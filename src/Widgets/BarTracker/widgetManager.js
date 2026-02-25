@@ -100,7 +100,7 @@ class WidgetManager {
 
     emitTrigger(triggerData) {
         for (const [, def] of this.widgets) {
-            if (def.type !== 'trigger' || !def.onTrigger) continue;
+            if (!def.onTrigger) continue;
             const inst = this.instances.get(def.id);
             if (inst?.state.enabled) def.onTrigger(def, inst.inner, triggerData);
         }

@@ -80,8 +80,9 @@ class TriggerEngine {
             enabled = true,
             cooldown = this.defaultCooldown,
             repeatable = true,
+            image_src = null,
             conditions = [],
-            actions = []
+            actions = [],
         } = triggerDef;
 
         if (!id) throw new Error('Trigger must have an id');
@@ -93,6 +94,7 @@ class TriggerEngine {
             enabled,
             cooldown,
             repeatable,
+            image_src, 
             conditions: Array.isArray(conditions) ? conditions : [conditions],
             actions: Array.isArray(actions) ? actions : [actions],
             createdAt: Date.now(),
@@ -107,8 +109,8 @@ class TriggerEngine {
             enabled: enabled,
             vars:{} // Placeholder for any future per-trigger variables or state needed by actions
         });
-
-        console.log(`✅ Trigger registered: ${name} (ID: ${id}, repeatable: ${repeatable})`);
+        //console.log(triggerDef);
+        console.log(`✅ Trigger registered: ${name} (ID: ${id}, repeatable: ${repeatable}${image_src ? ', has image' : ''})`);
     }
 
     /**

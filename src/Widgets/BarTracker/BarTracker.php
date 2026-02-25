@@ -275,6 +275,7 @@ class BarTracker extends Widget {
 		<script>
 			<?php
 			$all_triggers = DB::fetchAll('select * from controller_triggers where state=1 order by ordering ASC');
+			//CMS::pprint_r ($all_triggers);
 			foreach($all_triggers as $trigger) {
 				$conditions = $trigger->conditions ? $trigger->conditions : "(event) => false";
 				$actions = $trigger->actions ? $trigger->actions : "(event) => {}";
@@ -282,12 +283,15 @@ class BarTracker extends Widget {
 				$conditions = str_replace("[NEWLINE]", "", $conditions);
 				$actions = str_replace("[NEWLINE]", "", $actions);
 
+				$image_src  = $trigger->image_src ? addslashes($trigger->image_src) : '';
+
 				$output_js = "triggerEngine.registerTrigger({";
 				$output_js .= "id: " . $trigger->id . ",";
 				$output_js .= "name: \"" . addslashes($trigger->title) . "\",";
 				$output_js .= "description: \"" . addslashes($trigger->description) . "\",";
 				$output_js .= "cooldown: " . ($trigger->repeatable_interval ? ($trigger->repeatable_interval * 1000) : 'triggerEngine.defaultCooldown') . ",";
 				$output_js .= "repeatable: " . ($trigger->repeatable==1 ? 'true' : 'false') . ",";
+				$output_js .= "image_src: "   . ($image_src ? '"' . $image_src . '"' : 'null') . ",";
 				$output_js .= "conditions: [" . $conditions . "],";
 				$output_js .= "actions: [" . $actions . "]";
 				$output_js .= "});";
