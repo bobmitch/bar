@@ -11,6 +11,9 @@
  *   GET    /soundapi/soundpack/list        - List all soundpacks for user
  *   DELETE /soundapi/soundpack/remove      - Delete soundpack
  *   DELETE /soundapi/soundpack/removeaudio       - Remove audio from trigger
+ *   POST   /soundapi/soundpack/setimage    - Set image_src on a trigger (Giphy URL)
+ *   POST   /soundapi/soundpack/clearimage  - Clear image_src on a trigger
+ *   GET    /soundapi/soundpack/giphysearch - Proxy Giphy sticker search (key stays server-side)
  */
 
 namespace bartracker\controllers\soundpack;
@@ -28,6 +31,7 @@ class SoundpackController {
     const ALLOWED_MIMETYPES = ['audio/mpeg', 'audio/mp3'];
     const AUDIO_UPLOAD_DIR = '/src/audio/'; // Relative to web root
     const AUDIO_STORAGE_DIR = __DIR__ . '/../../audio/'; // Server path
+    const MAX_IMAGE_URL_LENGTH = 2048;
     
     private $userId;
     private $method;
@@ -80,7 +84,7 @@ class SoundpackController {
         header('Content-Type: application/json');
 
         // Mutating actions require CSRF validation
-        $mutatingActions = ['create', 'upload', 'test-audio', 'remove', 'removeaudio'];
+        $mutatingActions = ['create', 'upload', 'test-audio', 'remove', 'removeaudio', 'setimage', 'clearimage'];
 
         if (in_array($this->action, $mutatingActions) && $this->method === 'POST') {
             if (!CSRF::validate()) {
@@ -133,7 +137,22 @@ class SoundpackController {
                     $this->removeAudio();
                 }
                 break;
+            case 'setimage':
+                if ($this->method === 'POST') {
+                    $this->setTriggerImage();
+                }
+                break;
 
+            case 'clearimage':
+                if ($this->method === 'POST') {
+                    $this->clearTriggerImage();
+                }
+                break;
+            case 'giphysearch':
+                if ($this->method === 'GET') {
+                    $this->giphySearch();
+                }
+                break;
             default:
                 $this->error('Unknown action: ' . $this->action, 400);
         }
@@ -475,6 +494,150 @@ class SoundpackController {
     /**
      * VALIDATION & UTILITY METHODS
      */
+
+    /**
+     * Set (or update) the image_src on a trigger.
+     * image_src is stored directly on controller_triggers — no soundpack involved.
+     * Required POST: trigger_id, image_url
+     * image_url may be empty string to clear.
+     */
+    private function setTriggerImage() {
+        $triggerId = intval($_POST['trigger_id'] ?? 0);
+        $imageUrl  = trim($_POST['image_url'] ?? '');
+
+        if (!$triggerId) {
+            $this->error('Trigger ID is required');
+            return;
+        }
+
+        if ($imageUrl !== '') {
+            if (strlen($imageUrl) > self::MAX_IMAGE_URL_LENGTH) {
+                $this->error('Image URL is too long (max ' . self::MAX_IMAGE_URL_LENGTH . ' characters)');
+                return;
+            }
+
+            if (!filter_var($imageUrl, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//i', $imageUrl)) {
+                $this->error('Invalid image URL — must start with http:// or https://');
+                return;
+            }
+
+            // Restrict to Giphy CDN hosts only
+            $allowedHosts = [
+                'media.giphy.com', 'media0.giphy.com', 'media1.giphy.com',
+                'media2.giphy.com', 'media3.giphy.com', 'media4.giphy.com',
+                'i.giphy.com',
+            ];
+            $parsedHost = strtolower(parse_url($imageUrl, PHP_URL_HOST) ?? '');
+            if (!in_array($parsedHost, $allowedHosts)) {
+                $this->error('Image URL host not allowed. Only Giphy CDN URLs are accepted.');
+                return;
+            }
+        }
+
+        // Verify the trigger belongs to this user
+        $trigger = DB::fetch(
+            'SELECT id FROM controller_triggers WHERE id = ? AND created_by = ?',
+            [$triggerId, $this->userId]
+        );
+
+        if (!$trigger) {
+            $this->error('Trigger not found or access denied', 403);
+            return;
+        }
+
+        try {
+            DB::exec(
+                'UPDATE controller_triggers SET image_src = ?, updated_by = ? WHERE id = ?',
+                [$imageUrl !== '' ? $imageUrl : null, $this->userId, $triggerId]
+            );
+
+            $this->success($imageUrl !== '' ? 'Trigger image updated' : 'Trigger image cleared', [
+                'trigger_id' => $triggerId,
+                'image_src'  => $imageUrl !== '' ? $imageUrl : null,
+            ]);
+        } catch (\Exception $e) {
+            $this->error('Database error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Clear the image_src on a trigger.
+     * Required POST: trigger_id
+     */
+    private function clearTriggerImage() {
+        $_POST['image_url'] = '';
+        $this->setTriggerImage();
+    }
+
+    /**
+     * Proxy Giphy sticker search — keeps the API key server-side.
+     * Required GET: q (search query)
+     * Optional GET: limit (default 18, max 24)
+     */
+    private function giphySearch() {
+        $query = trim($_GET['q'] ?? '');
+        if ($query === '') {
+            $this->error('Search query is required');
+            return;
+        }
+
+        $limit = min(24, max(1, intval($_GET['limit'] ?? 18)));
+
+        // API key stored in DB configurations table — set it there via admin or direct SQL:
+        // INSERT INTO configurations (name, configuration) VALUES ('giphy_api_key', 'YOUR_KEY_HERE')
+        // ON DUPLICATE KEY UPDATE configuration = 'YOUR_KEY_HERE';
+        $keyRow = DB::fetch("SELECT configuration FROM configurations WHERE name = 'giphy_api_key'");
+        $apiKey = $keyRow ? trim($keyRow->configuration, '"') : '';
+
+        if (!$apiKey) {
+            $this->error('Giphy API key not configured. Add it to the configurations table with name "giphy_api_key".');
+            return;
+        }
+
+        $url = 'https://api.giphy.com/v1/stickers/search?' . http_build_query([
+            'api_key' => $apiKey,
+            'q'       => $query,
+            'limit'   => $limit,
+            'rating'  => 'g',
+            'lang'    => 'en',
+        ]);
+
+        $ctx = stream_context_create(['http' => [
+            'timeout'       => 5,
+            'ignore_errors' => true,
+            'header'        => 'User-Agent: BAR-Tracker/1.0',
+        ]]);
+
+        $body = @file_get_contents($url, false, $ctx);
+
+        if ($body === false) {
+            $this->error('Failed to reach Giphy API');
+            return;
+        }
+
+        $json = json_decode($body, true);
+
+        // Pass Giphy's own error through
+        if (isset($json['meta']['status']) && $json['meta']['status'] !== 200) {
+            $this->error('Giphy error: ' . ($json['meta']['msg'] ?? 'Unknown'), $json['meta']['status']);
+            return;
+        }
+
+        // Reshape to only what the client needs — don't forward the raw key or full payload
+        $items = array_map(function($item) {
+            return [
+                'title'   => $item['title'] ?? '',
+                'preview' => $item['images']['fixed_height_small_still']['url']
+                        ?? $item['images']['fixed_height_small']['url']
+                        ?? '',
+                'url'     => $item['images']['fixed_height']['webp']
+                        ?? $item['images']['fixed_height']['url']
+                        ?? '',
+            ];
+        }, $json['data'] ?? []);
+
+        $this->success('Giphy results', ['items' => $items]);
+    }
 
     /**
      * Validate audio file upload

@@ -379,6 +379,188 @@ body.bar-enabled {
     margin-bottom: 24px;
 }
 
+/* ========== INLINE MODALS (soundpack-manager context) ========== */
+/* These modals render inline inside their parent panel by default  */
+
+.modal {
+    display: none;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal:not(.hidden) {
+    display: block;
+}
+
+/* ========== GIPHY PICKER MODAL (full-screen overlay) ========== */
+
+#giphy-picker-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+
+#giphy-picker-modal.hidden {
+    display: none;
+}
+
+#giphy-picker-modal .modal-content {
+    text-align: left;
+    padding: 24px;
+    width: 540px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 0 40px rgba(0, 217, 255, 0.15);
+}
+
+#giphy-picker-modal h4 {
+    color: var(--accent-primary);
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+}
+
+#giphy-picker-modal .form-group {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+#giphy-picker-modal .form-group input {
+    flex: 1;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: var(--border-radius);
+    font-size: 13px;
+}
+
+#giphy-picker-modal .form-group input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(0, 217, 255, 0.15);
+}
+
+/* Results grid */
+.giphy-results {
+    min-height: 80px;
+}
+
+.giphy-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.giphy-grid::-webkit-scrollbar {
+    width: 4px;
+}
+
+.giphy-grid::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+}
+
+.giphy-grid::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+}
+
+.giphy-item {
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.4);
+    aspect-ratio: 1;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+}
+
+.giphy-item:hover {
+    border-color: rgba(0, 217, 255, 0.5);
+    transform: scale(1.05);
+}
+
+.giphy-item.selected {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
+}
+
+.giphy-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* Giphy attribution */
+.giphy-attribution {
+    font-size: 0.68em;
+    color: #444;
+    text-align: right;
+    margin-top: 6px;
+}
+
+/* ========== IMAGE SECTION (trigger items) ========== */
+
+.image-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.image-status {
+    margin-bottom: 6px;
+    min-height: 24px;
+}
+
+.image-assigned {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.image-assigned img {
+    height: 48px;
+    width: 48px;
+    object-fit: contain;
+    border-radius: 4px;
+    background: #111;
+    flex-shrink: 0;
+}
+
+.image-assigned span {
+    font-size: 0.72em;
+    color: var(--text-secondary);
+    word-break: break-all;
+    line-height: 1.3;
+}
+
+.image-empty {
+    font-size: 0.8em;
+    color: #555;
+}
+
+.image-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 /* ========== TRIGGERS VIEW ========== */
 
 .triggers-layout {

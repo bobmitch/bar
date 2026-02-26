@@ -88,6 +88,25 @@ class TriggersManager {
                         </div>
                     </div>
                 </div>
+
+                <!-- Giphy Sticker Picker Modal -->
+                <div id="giphy-picker-modal" class="modal hidden">
+                    <div class="modal-content bar-panel" style="width: 520px; max-width: 95vw;">
+                        <h4>🎞️ CHOOSE A GIPHY STICKER</h4>
+                        <div class="form-group" style="display:flex;gap:8px;">
+                            <input type="text" id="giphy-search-input" placeholder="Search stickers..." maxlength="100"
+                                style="flex:1;" />
+                            <button id="giphy-search-btn" class="bar-btn-primary">Search</button>
+                        </div>
+                        <div id="giphy-results" class="giphy-results">
+                            <p class="empty-state">Type something to search Giphy stickers.</p>
+                        </div>
+                        <div class="modal-actions" style="margin-top:10px;">
+                            <button id="giphy-cancel-btn" class="bar-btn-small">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         `;
 
@@ -119,6 +138,25 @@ class TriggersManager {
             this.activeSoundpackId = e.detail.soundpackId;
             this.renderSoundpacks();
             this.renderTriggers(); 
+        });
+
+        // Giphy modal search button
+        document.addEventListener('click', async (e) => {
+            if (e.target.id === 'giphy-search-btn' || e.target.closest('#giphy-search-btn')) {
+                const q = document.getElementById('giphy-search-input')?.value?.trim();
+                if (q) await this.searchGiphy(q);
+            }
+            if (e.target.id === 'giphy-cancel-btn') {
+                this.closeGiphyModal();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.getElementById('giphy-picker-modal')?.classList.contains('hidden') === false) {
+                const q = document.getElementById('giphy-search-input')?.value?.trim();
+                if (q) this.searchGiphy(q);
+            }
+            if (e.key === 'Escape') this.closeGiphyModal();
         });
 
         window.triggersManagerListenersAttached = true;
@@ -310,6 +348,24 @@ class TriggersManager {
                             </div>
                         </div>
                     </div>
+
+                    <div class="image-section" style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+                        <div class="image-status">
+                            ${trigger.image_src
+                                ? `<div class="image-assigned" style="display:flex;align-items:center;gap:8px;">
+                                        <img src="${this.escapeHtml(trigger.image_src)}" alt="sticker preview"
+                                            style="height:48px;width:48px;object-fit:contain;border-radius:4px;background:#111;">
+                                        <span style="font-size:0.75em;color:#aaa;word-break:break-all;">${this.escapeHtml(trigger.image_src)}</span>
+                                </div>`
+                                : `<div class="image-empty" style="color:#666;font-size:0.8em;">🖼️ No sticker assigned</div>`
+                            }
+                        </div>
+                        <div class="image-actions" style="margin-top:6px;display:flex;gap:6px;">
+                            <button class="pick-giphy bar-btn-small" data-trigger-id="${trigger.id}">🎞️ Giphy Sticker</button>
+                            ${trigger.image_src ? `<button class="clear-image bar-btn-small" data-trigger-id="${trigger.id}">✕ Clear</button>` : ''}
+                        </div>
+                    </div>
+
                 </div>
             `;
         }).join('');
@@ -367,6 +423,25 @@ class TriggersManager {
                 await this.removeAudio(triggerId);
                 return;
             }
+
+            const pickGiphyBtn = target.closest('.pick-giphy');
+            const clearImageBtn = target.closest('.clear-image');
+
+            if (pickGiphyBtn || clearImageBtn) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+
+            if (pickGiphyBtn) {
+                this.openGiphyModal(triggerId);
+                return;
+            }
+
+            if (clearImageBtn) {
+                await this.clearImage(triggerId);
+                return;
+            }
+
         }, true);
 
         // --- DRAG & DROP HANDLERS: Visual Feedback + Upload ---
@@ -798,6 +873,186 @@ class TriggersManager {
         if (seconds < 60) return `${seconds}s ago`;
         if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
         return `${Math.floor(seconds / 3600)}h ago`;
+    }
+
+    /**
+     * GIPHY STICKER PICKER
+     */
+
+    openGiphyModal(triggerId) {
+        const modal = document.getElementById('giphy-picker-modal');
+        if (!modal) return;
+        modal.dataset.triggerId = triggerId;
+        modal.classList.remove('hidden');
+        document.getElementById('giphy-search-input')?.focus();
+        // Show current image info in results if set
+        const trigger = triggerEngine.triggers.get(triggerId);
+        const resultsEl = document.getElementById('giphy-results');
+        if (trigger?.image_src) {
+            resultsEl.innerHTML = `<p class="empty-state" style="font-size:0.8em;">Current: <img src="${this.escapeHtml(trigger.image_src)}" style="height:32px;vertical-align:middle;"> — search below to replace.</p>`;
+        } else {
+            resultsEl.innerHTML = `<p class="empty-state">Type something to search Giphy stickers.</p>`;
+        }
+    }
+
+    closeGiphyModal() {
+        const modal = document.getElementById('giphy-picker-modal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.dataset.triggerId = '';
+        const input = document.getElementById('giphy-search-input');
+        if (input) input.value = '';
+        document.getElementById('giphy-results').innerHTML = '';
+    }
+
+    async searchGiphy(query) {
+        const resultsEl = document.getElementById('giphy-results');
+        if (!resultsEl) return;
+        resultsEl.innerHTML = '<p class="empty-state">⏳ Searching...</p>';
+
+        try {
+            const response = await apiFetch(
+                `/soundapi/soundpack/giphysearch?q=${encodeURIComponent(query)}&limit=18`,
+                { method: 'GET' }
+            );
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+
+            if (!result.success) {
+                resultsEl.innerHTML = `<p class="empty-state" style="color:#f44;">${this.escapeHtml(result.message)}</p>`;
+                return;
+            }
+
+            const items = result.data.items || [];
+
+            if (items.length === 0) {
+                resultsEl.innerHTML = '<p class="empty-state">No stickers found. Try a different search.</p>';
+                return;
+            }
+
+            resultsEl.innerHTML = `
+                <div class="giphy-grid">
+                    ${items.map(item => `
+                        <div class="giphy-item" data-url="${this.escapeHtml(item.url)}"
+                            title="${this.escapeHtml(item.title)}">
+                            <img src="${this.escapeHtml(item.preview)}" loading="lazy" />
+                        </div>
+                    `).join('')}
+                </div>
+                <p class="giphy-attribution">Powered by Giphy</p>
+            `;
+
+            resultsEl.querySelectorAll('.giphy-item').forEach(item => {
+                item.addEventListener('click', async () => {
+                    resultsEl.querySelectorAll('.giphy-item').forEach(i => i.classList.remove('selected'));
+                    item.classList.add('selected');
+                    const url = item.dataset.url;
+                    const modal = document.getElementById('giphy-picker-modal');
+                    const triggerId = parseInt(modal?.dataset.triggerId || '0');
+                    if (triggerId && url) {
+                        await this.saveImage(triggerId, url);
+                    }
+                });
+            });
+
+        } catch (err) {
+            console.error('Giphy search error:', err);
+            resultsEl.innerHTML = `<p class="empty-state" style="color:#f44;">Search failed: ${this.escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    async saveImage(triggerId, imageUrl) {
+        try {
+            const formData = new FormData();
+            formData.append('trigger_id', triggerId);
+            formData.append('image_url', imageUrl);
+
+            const response = await apiFetch('/soundapi/soundpack/setimage', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+
+            if (result.success) {
+                // Update the live triggerEngine so it takes effect immediately without page reload
+                const trigger = triggerEngine.triggers.get(triggerId);
+                if (trigger) trigger.image_src = imageUrl;
+
+                this.updateTriggerImageUI(triggerId, imageUrl);
+                this.showNotification('✅ Sticker saved!', 'success');
+                this.closeGiphyModal();
+            } else {
+                this.showNotification(result.message || 'Failed to save image', 'error');
+            }
+        } catch (err) {
+            console.error('Save image error:', err);
+            this.showNotification('Failed to save sticker: ' + err.message, 'error');
+        }
+    }
+
+    async clearImage(triggerId) {
+        try {
+            const formData = new FormData();
+            formData.append('trigger_id', triggerId);
+
+            const response = await apiFetch('/soundapi/soundpack/clearimage', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+
+            if (result.success) {
+                // Update live engine
+                const trigger = triggerEngine.triggers.get(triggerId);
+                if (trigger) trigger.image_src = null;
+
+                this.updateTriggerImageUI(triggerId, null);
+                this.showNotification('✅ Sticker cleared', 'success');
+            } else {
+                this.showNotification(result.message || 'Failed to clear image', 'error');
+            }
+        } catch (err) {
+            console.error('Clear image error:', err);
+            this.showNotification('Failed to clear sticker: ' + err.message, 'error');
+        }
+    }
+
+    /**
+     * Update the image section for a trigger without full re-render
+     */
+    updateTriggerImageUI(triggerId, imageUrl) {
+        const triggerItem = document.querySelector(`.trigger-item[data-trigger-id="${triggerId}"]`);
+        if (!triggerItem) return;
+
+        const imageStatusDiv = triggerItem.querySelector('.image-status');
+        const imageActionsDiv = triggerItem.querySelector('.image-actions');
+
+        if (imageStatusDiv) {
+            if (imageUrl) {
+                imageStatusDiv.innerHTML = `
+                    <div class="image-assigned" style="display:flex;align-items:center;gap:8px;">
+                        <img src="${this.escapeHtml(imageUrl)}" alt="sticker preview"
+                            style="height:48px;width:48px;object-fit:contain;border-radius:4px;background:#111;">
+                        <span style="font-size:0.75em;color:#aaa;word-break:break-all;">${this.escapeHtml(imageUrl)}</span>
+                    </div>`;
+            } else {
+                imageStatusDiv.innerHTML = `<div class="image-empty" style="color:#666;font-size:0.8em;">🖼️ No sticker assigned</div>`;
+            }
+        }
+
+        if (imageActionsDiv) {
+            // Rebuild action buttons
+            imageActionsDiv.innerHTML = `
+                <button class="pick-giphy bar-btn-small" data-trigger-id="${triggerId}">🎞️ Giphy Sticker</button>
+                ${imageUrl ? `<button class="clear-image bar-btn-small" data-trigger-id="${triggerId}">✕ Clear</button>` : ''}
+            `;
+            // The existing delegated click listener on #trigger-list covers these new buttons automatically
+        }
     }
 }
 
