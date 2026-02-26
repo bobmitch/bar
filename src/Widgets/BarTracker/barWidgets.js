@@ -23,7 +23,7 @@ const TRIGGER_DISPLAY_MS = 4500;
 const TRIGGER_MAX_STACK  = 8;
 
 // image widget timing (also used in CSS, keep in sync)
-const IMAGE_DISPLAY_MS    = 2000;   // how long the image stays visible
+const IMAGE_DISPLAY_MS    = 4000;   // how long the image stays visible
 const IMAGE_FADE_MS       = 300;    // CSS transition duration (keep in sync with CSS)
 
 widgetManager.register({

@@ -142,7 +142,6 @@ body.bar-enabled {
 .bar-content {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
 }
 
 .view-section {
@@ -651,7 +650,7 @@ body[data-view="streaming"] {
 }
 
 .view-section.active {
-    height: 96dvh;
+    height: 100dvh;
 }
 
 /* ============================================================
