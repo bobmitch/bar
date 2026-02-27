@@ -30,6 +30,19 @@ class TriggerEngine {
         this.activeSoundpackIsOwner = false;
     }
 
+    _applyImageMapping(soundpackId) {
+        const imageMap = this.soundpackImages?.get(soundpackId) || {};
+        // Reset all trigger image_srcs to null, then apply soundpack's mappings
+        for (const trigger of this.triggers.values()) {
+            trigger.image_src = imageMap[trigger.id] ?? null;
+        }
+    }
+
+    getActiveSoundpackImageMapping() {
+        if (!this.activeSoundpackId) return {};
+        return this.soundpackImages?.get(this.activeSoundpackId) || {};
+    }
+
     async loadSoundpack(soundpackId) {
         try {
             console.log(`📦 Loading soundpack ${soundpackId}...`);
@@ -40,10 +53,17 @@ class TriggerEngine {
             if (!result.success) throw new Error(result.message);
 
             this.soundpacks.set(soundpackId, result.data.triggers);
+            // Store image mapping keyed the same way as audio
+            this.soundpackImages = this.soundpackImages || new Map();
+            this.soundpackImages.set(soundpackId, result.data.images || {});
+
             this.activeSoundpackId = soundpackId;
             this.activeSoundpackIsOwner = result.data.is_owner;
 
             localStorage.setItem('BAR-active-soundpack-id', soundpackId);
+
+            // Apply images from active soundpack onto trigger objects
+            this._applyImageMapping(soundpackId);
 
             console.log(`✅ Soundpack loaded: ${result.data.title} (Owner: ${this.activeSoundpackIsOwner})`);
             return result.data;
@@ -324,6 +344,8 @@ class TriggerEngine {
                 await this.loadSoundpack(soundpackId);
             } else {
                 this.activeSoundpackId = soundpackId;
+                // Re-apply image mapping when switching to an already-loaded pack
+                this._applyImageMapping(soundpackId);
             }
 
             localStorage.setItem('BAR-active-soundpack-id', soundpackId);

@@ -293,11 +293,13 @@ class TriggersManager {
 
         const triggers = triggerEngine.getAllTriggers();
         const soundpackMapping = triggerEngine.getActiveSoundpackMapping() || {};
+        const imageMapping     = triggerEngine.getActiveSoundpackImageMapping();
         const isOwner = triggerEngine.activeSoundpackIsOwner; // Use engine state
 
         container.innerHTML = triggers.map(trigger => {
             const hasAudio = soundpackMapping[trigger.id];
             const isEnabled = trigger.enabled;
+            const imageSrc  = imageMapping[trigger.id] ?? null;
 
             return `
                 <div class="trigger-item" data-trigger-id="${trigger.id}">
@@ -351,18 +353,18 @@ class TriggersManager {
 
                     <div class="image-section" style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
                         <div class="image-status">
-                            ${trigger.image_src
+                            ${imageSrc
                                 ? `<div class="image-assigned" style="display:flex;align-items:center;gap:8px;">
-                                        <img src="${this.escapeHtml(trigger.image_src)}" alt="sticker preview"
+                                        <img src="${this.escapeHtml(imageSrc)}" alt="sticker preview"
                                             style="height:48px;width:48px;object-fit:contain;border-radius:4px;background:#111;">
-                                        <span style="font-size:0.75em;color:#aaa;word-break:break-all;">${this.escapeHtml(trigger.image_src)}</span>
+                                        <span style="font-size:0.75em;color:#aaa;word-break:break-all;">${this.escapeHtml(imageSrc)}</span>
                                 </div>`
                                 : `<div class="image-empty" style="color:#666;font-size:0.8em;">🖼️ No sticker assigned</div>`
                             }
                         </div>
                         <div class="image-actions" style="margin-top:6px;display:flex;gap:6px;">
                             <button class="pick-giphy bar-btn-small" data-trigger-id="${trigger.id}">🎞️ Giphy Sticker</button>
-                            ${trigger.image_src ? `<button class="clear-image bar-btn-small" data-trigger-id="${trigger.id}">✕ Clear</button>` : ''}
+                            ${imageSrc ? `<button class="clear-image bar-btn-small" data-trigger-id="${trigger.id}">✕ Clear</button>` : ''}
                         </div>
                     </div>
 
@@ -1025,6 +1027,7 @@ class TriggersManager {
             const formData = new FormData();
             formData.append('trigger_id', triggerId);
             formData.append('image_url', imageUrl);
+            formData.append('soundpack_id', this.activeSoundpackId); 
 
             const response = await apiFetch('/soundapi/soundpack/setimage', {
                 method: 'POST',
@@ -1055,6 +1058,7 @@ class TriggersManager {
         try {
             const formData = new FormData();
             formData.append('trigger_id', triggerId);
+            formData.append('soundpack_id', this.activeSoundpackId);
 
             const response = await apiFetch('/soundapi/soundpack/clearimage', {
                 method: 'POST',

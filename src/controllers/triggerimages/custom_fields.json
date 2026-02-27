@@ -1,0 +1,36 @@
+{
+	"title":"Trigger Images",
+	"id":"soundpack_images",
+	"list":["sound_pack", "trigger_id"],
+	"fields": [
+		{
+			"type":"ContentSelector",
+			"label": "Sound Pack",
+			"name": "sound_pack",
+			"id": "sound_pack",
+			"description":"Select a sound pack.",
+			"default":1,
+			"content_type":3,
+			"required": true
+		},
+		{
+			"type":"ContentSelector",
+			"label": "Trigger",
+			"name": "trigger_id",
+			"id": "trigger_id",
+			"description":"Select a trigger.",
+			"default":1,
+			"content_type":2,
+			"required": true
+		},
+		{
+			"type": "Text",
+			"label": "Image URL",
+			"name": "image_url",
+			"id": "image_url",
+			"description":"Giphy URL of the image to display when the trigger is activated.",
+			"default":"",
+			"required": false
+		}
+	]
+}

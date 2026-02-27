@@ -340,7 +340,6 @@ class SoundpackController {
             return;
         }
 
-        // Verify soundpack belongs to user
         $soundpack = DB::fetch(
             'SELECT * FROM controller_soundpacks WHERE id = ? AND (created_by = ? OR is_public = 1)',
             [$soundpackId, $this->userId]
@@ -351,7 +350,6 @@ class SoundpackController {
             return;
         }
 
-        // Get all trigger->audio mappings
         try {
             $sounds = DB::fetchAll(
                 'SELECT trigger_id, filename FROM controller_sounds WHERE sound_pack = ?',
@@ -362,15 +360,28 @@ class SoundpackController {
             foreach ($sounds as $sound) {
                 $mapping[$sound->trigger_id] = [
                     'filename' => $sound->filename,
-                    'url' => self::AUDIO_UPLOAD_DIR . $sound->filename
+                    'url'      => self::AUDIO_UPLOAD_DIR . $sound->filename
                 ];
             }
+
+            // Load image mappings for this soundpack
+            $images = DB::fetchAll(
+                'SELECT trigger_id, image_url FROM controller_soundpack_images WHERE sound_pack = ?',
+                [$soundpackId]
+            );
+
+            $imageMapping = [];
+            foreach ($images as $img) {
+                $imageMapping[$img->trigger_id] = $img->image_url;
+            }
+
             $isOwner = ($soundpack->created_by == $this->userId);
             $this->success('Soundpack loaded', [
                 'soundpack_id' => $soundpackId,
-                'title' => $soundpack->title,
-                'is_owner' => $isOwner, 
-                'triggers' => $mapping
+                'title'        => $soundpack->title,
+                'is_owner'     => $isOwner,
+                'triggers'     => $mapping,
+                'images'       => $imageMapping,
             ]);
 
         } catch (\Exception $e) {
@@ -438,6 +449,7 @@ class SoundpackController {
             // Delete database records
             DB::exec('delete from controller_sounds where sound_pack = ?', [$soundpackId]);
             DB::exec('delete from controller_soundpacks where id = ?', [$soundpackId]);
+            DB::exec('DELETE FROM controller_soundpack_images WHERE sound_pack = ?', [$soundpackId]);
 
             $this->success('Soundpack deleted successfully');
         } catch (\Exception $e) {
@@ -502,11 +514,12 @@ class SoundpackController {
      * image_url may be empty string to clear.
      */
     private function setTriggerImage() {
-        $triggerId = intval($_POST['trigger_id'] ?? 0);
-        $imageUrl  = trim($_POST['image_url'] ?? '');
+        $soundpackId = intval($_POST['soundpack_id'] ?? 0);
+        $triggerId   = intval($_POST['trigger_id']   ?? 0);
+        $imageUrl    = trim($_POST['image_url']       ?? '');
 
-        if (!$triggerId) {
-            $this->error('Trigger ID is required');
+        if (!$soundpackId || !$triggerId) {
+            $this->error('Soundpack ID and Trigger ID are required');
             return;
         }
 
@@ -515,13 +528,10 @@ class SoundpackController {
                 $this->error('Image URL is too long (max ' . self::MAX_IMAGE_URL_LENGTH . ' characters)');
                 return;
             }
-
             if (!filter_var($imageUrl, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//i', $imageUrl)) {
                 $this->error('Invalid image URL — must start with http:// or https://');
                 return;
             }
-
-            // Restrict to Giphy CDN hosts only
             $allowedHosts = [
                 'media.giphy.com', 'media0.giphy.com', 'media1.giphy.com',
                 'media2.giphy.com', 'media3.giphy.com', 'media4.giphy.com',
@@ -534,26 +544,37 @@ class SoundpackController {
             }
         }
 
-        // Verify the trigger belongs to this user
-        $trigger = DB::fetch(
-            'SELECT id FROM controller_triggers WHERE id = ? AND created_by = ?',
-            [$triggerId, $this->userId]
+        // Verify soundpack belongs to user
+        $soundpack = DB::fetch(
+            'SELECT id FROM controller_soundpacks WHERE id = ? AND created_by = ?',
+            [$soundpackId, $this->userId]
         );
-
-        if (!$trigger) {
-            $this->error('Trigger not found or access denied', 403);
+        if (!$soundpack) {
+            $this->error('Soundpack not found or access denied', 403);
             return;
         }
 
         try {
-            DB::exec(
-                'UPDATE controller_triggers SET image_src = ?, updated_by = ? WHERE id = ?',
-                [$imageUrl !== '' ? $imageUrl : null, $this->userId, $triggerId]
-            );
+            if ($imageUrl !== '') {
+                // make uuid title
+                $title = 'sp' . $soundpackId . '_t' . $triggerId . '_' . bin2hex(random_bytes(8));
+                DB::exec(
+                    'INSERT INTO controller_soundpack_images (content_type,title,alias,sound_pack, trigger_id, image_url, created_by, updated_by)
+                    VALUES (5,?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE image_url = ?, updated_by = ?',
+                    [$title, $title, $soundpackId, $triggerId, $imageUrl, $this->userId, $this->userId, $imageUrl, $this->userId]
+                );
+            } else {
+                DB::exec(
+                    'DELETE FROM controller_soundpack_images WHERE sound_pack = ? AND trigger_id = ?',
+                    [$soundpackId, $triggerId]
+                );
+            }
 
             $this->success($imageUrl !== '' ? 'Trigger image updated' : 'Trigger image cleared', [
-                'trigger_id' => $triggerId,
-                'image_src'  => $imageUrl !== '' ? $imageUrl : null,
+                'soundpack_id' => $soundpackId,
+                'trigger_id'   => $triggerId,
+                'image_src'    => $imageUrl !== '' ? $imageUrl : null,
             ]);
         } catch (\Exception $e) {
             $this->error('Database error: ' . $e->getMessage());
