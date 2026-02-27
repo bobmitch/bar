@@ -575,17 +575,15 @@ class SoundpackController {
      * Optional GET: limit (default 18, max 24)
      */
     private function giphySearch() {
-        $query = trim($_GET['q'] ?? '');
+        $query  = trim($_GET['q'] ?? '');
         if ($query === '') {
             $this->error('Search query is required');
             return;
         }
 
-        $limit = min(24, max(1, intval($_GET['limit'] ?? 18)));
+        $limit  = min(24, max(1, intval($_GET['limit']  ?? 18)));
+        $offset = max(0,          intval($_GET['offset'] ?? 0));
 
-        // API key stored in DB configurations table — set it there via admin or direct SQL:
-        // INSERT INTO configurations (name, configuration) VALUES ('giphy_api_key', 'YOUR_KEY_HERE')
-        // ON DUPLICATE KEY UPDATE configuration = 'YOUR_KEY_HERE';
         $keyRow = DB::fetch("SELECT configuration FROM configurations WHERE name = 'giphy_api_key'");
         $apiKey = $keyRow ? trim($keyRow->configuration, '"') : '';
 
@@ -598,6 +596,7 @@ class SoundpackController {
             'api_key' => $apiKey,
             'q'       => $query,
             'limit'   => $limit,
+            'offset'  => $offset,
             'rating'  => 'g',
             'lang'    => 'en',
         ]);
@@ -617,13 +616,11 @@ class SoundpackController {
 
         $json = json_decode($body, true);
 
-        // Pass Giphy's own error through
         if (isset($json['meta']['status']) && $json['meta']['status'] !== 200) {
             $this->error('Giphy error: ' . ($json['meta']['msg'] ?? 'Unknown'), $json['meta']['status']);
             return;
         }
 
-        // Reshape to only what the client needs — don't forward the raw key or full payload
         $items = array_map(function($item) {
             return [
                 'title'   => $item['title'] ?? '',
@@ -636,7 +633,17 @@ class SoundpackController {
             ];
         }, $json['data'] ?? []);
 
-        $this->success('Giphy results', ['items' => $items]);
+        // Giphy pagination info
+        $totalCount = intval($json['pagination']['total_count'] ?? 0);
+        $nextOffset = $offset + $limit;
+        $hasMore    = $nextOffset < $totalCount;
+
+        $this->success('Giphy results', [
+            'items'       => $items,
+            'has_more'    => $hasMore,
+            'next_offset' => $nextOffset,
+            'total'       => $totalCount,
+        ]);
     }
 
     /**

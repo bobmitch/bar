@@ -899,7 +899,9 @@ class TriggersManager {
         const modal = document.getElementById('giphy-picker-modal');
         if (!modal) return;
         modal.classList.add('hidden');
-        modal.dataset.triggerId = '';
+        modal.dataset.triggerId   = '';
+        modal.dataset.giphyQuery  = '';
+        modal.dataset.giphyOffset = '0';
         const input = document.getElementById('giphy-search-input');
         if (input) input.value = '';
         document.getElementById('giphy-results').innerHTML = '';
@@ -910,9 +912,42 @@ class TriggersManager {
         if (!resultsEl) return;
         resultsEl.innerHTML = '<p class="empty-state">⏳ Searching...</p>';
 
+        // Store on the modal element so loadMoreGiphy can access it
+        const modal = document.getElementById('giphy-picker-modal');
+        modal.dataset.giphyQuery  = query;
+        modal.dataset.giphyOffset = '0';
+
+        await this._fetchGiphyPage(query, 0, false);
+    }
+
+    async loadMoreGiphy() {
+        const modal = document.getElementById('giphy-picker-modal');
+        const query  = modal.dataset.giphyQuery  || '';
+        const offset = parseInt(modal.dataset.giphyOffset || '0');
+        if (!query) return;
+        await this._fetchGiphyPage(query, offset, true);
+    }
+
+    async _fetchGiphyPage(query, offset, append) {
+        const resultsEl = document.getElementById('giphy-results');
+        const modal     = document.getElementById('giphy-picker-modal');
+        const LIMIT     = 18;
+
+        // Show spinner — either replace content or show at bottom
+        if (!append) {
+            resultsEl.innerHTML = '<p class="empty-state">⏳ Searching...</p>';
+        } else {
+            // Disable the more button while loading
+            const moreBtn = resultsEl.querySelector('.giphy-more-btn');
+            if (moreBtn) {
+                moreBtn.disabled = true;
+                moreBtn.textContent = '⏳ Loading...';
+            }
+        }
+
         try {
             const response = await apiFetch(
-                `/soundapi/soundpack/giphysearch?q=${encodeURIComponent(query)}&limit=18`,
+                `/soundapi/soundpack/giphysearch?q=${encodeURIComponent(query)}&limit=${LIMIT}&offset=${offset}`,
                 { method: 'GET' }
             );
 
@@ -920,45 +955,68 @@ class TriggersManager {
             const result = await response.json();
 
             if (!result.success) {
-                resultsEl.innerHTML = `<p class="empty-state" style="color:#f44;">${this.escapeHtml(result.message)}</p>`;
+                if (!append) {
+                    resultsEl.innerHTML = `<p class="empty-state" style="color:#f44;">${this.escapeHtml(result.message)}</p>`;
+                }
                 return;
             }
 
-            const items = result.data.items || [];
+            const items    = result.data.items     || [];
+            const hasMore  = result.data.has_more;
+            const newOffset = result.data.next_offset;
 
-            if (items.length === 0) {
-                resultsEl.innerHTML = '<p class="empty-state">No stickers found. Try a different search.</p>';
-                return;
+            // Update stored offset for the next "more" click
+            modal.dataset.giphyOffset = String(newOffset);
+
+            if (!append) {
+                if (items.length === 0) {
+                    resultsEl.innerHTML = '<p class="empty-state">No stickers found. Try a different search.</p>';
+                    return;
+                }
+                // Fresh render
+                resultsEl.innerHTML = `
+                    <div class="giphy-grid"></div>
+                    <p class="giphy-attribution">Powered by Giphy</p>
+                `;
+            } else {
+                // Remove old more-button before appending
+                resultsEl.querySelector('.giphy-more-btn')?.remove();
             }
 
-            resultsEl.innerHTML = `
-                <div class="giphy-grid">
-                    ${items.map(item => `
-                        <div class="giphy-item" data-url="${this.escapeHtml(item.url)}"
-                            title="${this.escapeHtml(item.title)}">
-                            <img src="${this.escapeHtml(item.preview)}" loading="lazy" />
-                        </div>
-                    `).join('')}
-                </div>
-                <p class="giphy-attribution">Powered by Giphy</p>
-            `;
-
-            resultsEl.querySelectorAll('.giphy-item').forEach(item => {
-                item.addEventListener('click', async () => {
+            const grid = resultsEl.querySelector('.giphy-grid');
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'giphy-item';
+                el.dataset.url = item.url;
+                el.title = item.title;
+                el.innerHTML = `<img src="${this.escapeHtml(item.preview)}" loading="lazy" />`;
+                el.addEventListener('click', async () => {
                     resultsEl.querySelectorAll('.giphy-item').forEach(i => i.classList.remove('selected'));
-                    item.classList.add('selected');
-                    const url = item.dataset.url;
-                    const modal = document.getElementById('giphy-picker-modal');
+                    el.classList.add('selected');
                     const triggerId = parseInt(modal?.dataset.triggerId || '0');
-                    if (triggerId && url) {
-                        await this.saveImage(triggerId, url);
+                    if (triggerId && item.url) {
+                        await this.saveImage(triggerId, item.url);
                     }
                 });
+                grid.appendChild(el);
             });
+
+            // Add / re-add more button if there are more results
+            if (hasMore) {
+                const moreBtn = document.createElement('button');
+                moreBtn.className = 'giphy-more-btn bar-btn-small';
+                moreBtn.textContent = '↓ Load More';
+                moreBtn.addEventListener('click', () => this.loadMoreGiphy());
+                // Insert before the attribution line
+                const attr = resultsEl.querySelector('.giphy-attribution');
+                resultsEl.insertBefore(moreBtn, attr);
+            }
 
         } catch (err) {
             console.error('Giphy search error:', err);
-            resultsEl.innerHTML = `<p class="empty-state" style="color:#f44;">Search failed: ${this.escapeHtml(err.message)}</p>`;
+            if (!append) {
+                resultsEl.innerHTML = `<p class="empty-state" style="color:#f44;">Search failed: ${this.escapeHtml(err.message)}</p>`;
+            }
         }
     }
 

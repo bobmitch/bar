@@ -465,6 +465,13 @@ body.bar-enabled {
     max-height: 300px;
     overflow-y: auto;
     padding-right: 4px;
+
+    /* Added: keep rows stable and avoid layout weirdness when appending “more” items */
+    grid-auto-rows: 1fr;
+
+    /* Added: contain painting so scaled hovers don't visually overlap neighbors */
+    overflow: auto;
+    padding: 2px;
 }
 
 .giphy-grid::-webkit-scrollbar {
@@ -488,6 +495,10 @@ body.bar-enabled {
     background: rgba(0, 0, 0, 0.4);
     aspect-ratio: 1;
     transition: border-color 0.15s ease, transform 0.1s ease;
+
+    /* Added: isolate stacking to reduce cross-tile overlap artifacts */
+    position: relative;
+    isolation: isolate;
 }
 
 .giphy-item:hover {
@@ -513,6 +524,13 @@ body.bar-enabled {
     color: #444;
     text-align: right;
     margin-top: 6px;
+}
+
+.giphy-more-btn {
+    display: block;
+    width: 100%;
+    margin: 10px 0 6px;
+    text-align: center;
 }
 
 /* ========== IMAGE SECTION (trigger items) ========== */
