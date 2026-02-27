@@ -145,6 +145,9 @@ body.bar-enabled {
     overflow-y: auto;
     max-height: 91vh;
 }
+body[data-view="streaming"] .bar-content {
+    max-height: 100vh;
+}
 
 .view-section {
     display: none;
@@ -1495,6 +1498,8 @@ body[data-view="streaming"] {
     display     : block;
     max-width   : 30em;   /* scales with widget font-size; tweak freely */
     max-height  : 20em;
+    width: 30em;
+    height: 20em;
     width       : auto;
     height      : auto;
     border-radius: var(--radius, 4px);
@@ -1507,5 +1512,6 @@ body[data-view="streaming"] {
 #image-display {
     width:30em;
     height:20em;
+    position:relative;
     /* give size for initial load before image is loaded, so widget is grab-able and shows scale hint */
 }

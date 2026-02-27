@@ -349,6 +349,36 @@ class WidgetManager {
             clearTimeout(_globalLongPressTimer);
             _globalTouchCount = 0;
         }, { passive: true });
+
+        // T key → fire a random image-bearing trigger for testing
+        document.addEventListener('keydown', (e) => {
+            if (document.body.dataset.view !== 'streaming') return;
+            if (e.key !== 't' && e.key !== 'T') return;
+            if (e.target.matches('input, textarea, select')) return;
+
+            if (typeof triggerEngine === 'undefined') return;
+
+            const imageMap = triggerEngine.getActiveSoundpackImageMapping?.() || {};
+
+            // Collect triggers that have an image assigned in the active soundpack
+            const candidates = [...triggerEngine.triggers.values()].filter(t => imageMap[t.id]);
+
+            if (candidates.length === 0) {
+                console.warn('🧪 No triggers with images found in active soundpack');
+                return;
+            }
+
+            const trigger = candidates[Math.floor(Math.random() * candidates.length)];
+            console.log(`🧪 Test-firing trigger with image: "${trigger.name}" (id: ${trigger.id})`);
+
+            this.emitTrigger({
+                id:        trigger.id,
+                name:      trigger.name,
+                event:     'TEST',
+                context:   null,
+                image_src: imageMap[trigger.id],
+            });
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
