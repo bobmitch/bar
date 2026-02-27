@@ -621,11 +621,14 @@ class SoundpackController {
             return;
         }
 
+        // fixed_height_small_still - static preview image (200w x 100h)
+        // fixed_height_small - animated preview (200w x 100h)
+        // fixed_height - full-size sticker (200w x variable h) — use webp if available for better performance
         $items = array_map(function($item) {
             return [
                 'title'   => $item['title'] ?? '',
-                'preview' => $item['images']['fixed_height_small_still']['url']
-                        ?? $item['images']['fixed_height_small']['url']
+                'preview' => $item['images']['fixed_height_small']['url']
+                        ?? $item['images']['fixed_height']['url']
                         ?? '',
                 'url'     => $item['images']['fixed_height']['webp']
                         ?? $item['images']['fixed_height']['url']

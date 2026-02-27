@@ -26,6 +26,7 @@
 
 body {
     color:var(--text-primary);
+    overflow:hidden;
 }
 
 body.bar-enabled {
@@ -142,6 +143,7 @@ body.bar-enabled {
 .bar-content {
     flex: 1;
     overflow-y: auto;
+    max-height: 91vh;
 }
 
 .view-section {
@@ -460,6 +462,8 @@ body.bar-enabled {
 
 .giphy-grid {
     display: grid;
+    display:flex;
+    flex-wrap:wrap;
     grid-template-columns: repeat(6, 1fr);
     gap: 6px;
     max-height: 300px;
@@ -532,6 +536,8 @@ body.bar-enabled {
     margin: 10px 0 6px;
     text-align: center;
 }
+
+
 
 /* ========== IMAGE SECTION (trigger items) ========== */
 
