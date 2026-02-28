@@ -404,12 +404,11 @@ body[data-view="streaming"] .bar-content {
 #giphy-picker-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.88);
+    background: rgba(0, 0, 0, 0.95);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10000;
-    backdrop-filter: blur(4px);
 }
 
 #giphy-picker-modal.hidden {
@@ -1500,13 +1499,11 @@ body[data-view="streaming"] {
     max-height  : 20em;
     width: 30em;
     height: 20em;
-    width       : auto;
-    height      : auto;
     border-radius: var(--radius, 4px);
     pointer-events: none;
     user-select : none;
     object-fit:contain;
-    object-position:center bottom;
+    object-position:right bottom;
 }
 
 #image-display {
