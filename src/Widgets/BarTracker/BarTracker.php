@@ -27,6 +27,13 @@ class BarTracker extends Widget {
 
             $uuid = $user->uuid ?? 'unknown-uuid';
             echo "<script>window.uuid = " . json_encode($uuid) . ";</script>";
+			?>
+			<!-- OBS Detection — defined early, used throughout -->
+			<script>
+				function isRunningInOBS() { return !!window.obsstudio; }
+				console.log('🔍 OBS check:', isRunningInOBS(), '| obsstudio:', window.obsstudio);
+			</script>
+			<?php
         }
 
         $csrf_token = CSRF::getToken();
@@ -220,54 +227,54 @@ class BarTracker extends Widget {
 
 		<!-- Audio Barrier Initialization -->
 		<script>
-			// Initialize audio context on first user interaction
-			const startBtn = document.getElementById('start-btn');
+			function isRunningInOBS() { return !!window.obsstudio; }
+
+			const startBtn    = document.getElementById('start-btn');
 			const audioBarrier = document.getElementById('audio-barrier');
-			
-			if (startBtn && audioBarrier) {
-				startBtn.addEventListener('click', function() {
-					console.log('🎵 Audio initialization clicked');
-					
-					// Initialize Web Audio API
-					try {
-						const AudioContext = window.AudioContext || window.webkitAudioContext;
-						if (AudioContext && !triggerEngine.audioContext) {
-							triggerEngine.audioContext = new AudioContext();
-							console.log('✅ Web Audio API initialized');
-						}
-					} catch (err) {
-						console.warn('⚠️ Web Audio API not available:', err);
-					}
-					
-					// Close the barrier modal
-					audioBarrier.style.display = 'none';
-					console.log('✅ Audio barrier closed');
-					
-					// Optional: Play a test sound
-					try {
-						const ctx = triggerEngine.audioContext;
-						if (ctx) {
-							const oscillator = ctx.createOscillator();
-							const gain = ctx.createGain();
-							
-							oscillator.connect(gain);
-							gain.connect(ctx.destination);
-							
-							oscillator.frequency.value = 880;
-							gain.gain.setValueAtTime(0.1, ctx.currentTime);
-							gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-							
-							oscillator.start(ctx.currentTime);
-							oscillator.stop(ctx.currentTime + 0.1);
-							
-							console.log('🔊 Test tone played');
-						}
-					} catch (err) {
-						console.warn('⚠️ Could not play test tone:', err);
-					}
-				});
+
+			if (isRunningInOBS()) {
+				// In OBS: hide the modal entirely — no click needed
+				if (audioBarrier) audioBarrier.style.display = 'none';
 			} else {
-				console.warn('⚠️ Audio barrier elements not found');
+				// Normal browser: show modal and wait for user click
+				if (startBtn && audioBarrier) {
+					startBtn.addEventListener('click', function() {
+						console.log('🎵 Audio initialization clicked');
+
+						try {
+							const AudioContext = window.AudioContext || window.webkitAudioContext;
+							if (AudioContext && !triggerEngine.audioContext) {
+								triggerEngine.audioContext = new AudioContext();
+								console.log('✅ Web Audio API initialized');
+							}
+						} catch (err) {
+							console.warn('⚠️ Web Audio API not available:', err);
+						}
+
+						audioBarrier.style.display = 'none';
+						console.log('✅ Audio barrier closed');
+
+						try {
+							const ctx = triggerEngine.audioContext;
+							if (ctx) {
+								const oscillator = ctx.createOscillator();
+								const gain = ctx.createGain();
+								oscillator.connect(gain);
+								gain.connect(ctx.destination);
+								oscillator.frequency.value = 880;
+								gain.gain.setValueAtTime(0.1, ctx.currentTime);
+								gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+								oscillator.start(ctx.currentTime);
+								oscillator.stop(ctx.currentTime + 0.1);
+								console.log('🔊 Test tone played');
+							}
+						} catch (err) {
+							console.warn('⚠️ Could not play test tone:', err);
+						}
+					});
+				} else {
+					console.warn('⚠️ Audio barrier elements not found');
+				}
 			}
 		</script>
 
@@ -352,6 +359,23 @@ class BarTracker extends Widget {
 				const wmBack = document.getElementById('wm-back-btn');
 				if (wmBack) {
 					wmBack.addEventListener('click', () => uiManager.switchView('standard'));
+				}
+
+				// If running in OBS, start on streaming view
+				if (isRunningInOBS()) {
+					console.log('🚀 Detected OBS environment, switching to streaming view');
+					setTimeout(() => {
+						uiManager.switchView('streaming');
+						// Optional: Show a brief alert in the HUD
+						const hud = document.getElementById('wm-hud');
+						if (hud) {
+							const alert = document.createElement('div');
+							alert.className = 'wm-hud-alert';
+							alert.textContent = 'OBS MODE ACTIVE';
+							hud.appendChild(alert);
+							setTimeout(() => hud.removeChild(alert), 3000);
+						}
+					}, 1000);
 				}
 
 			});
