@@ -209,27 +209,97 @@ for (const s of STAT_DEFS) {
 // through the standard WidgetManager interface.
 //
 // CHART_DEFS — add more chart types here; each gets its own widget.
-// Each def provides:
+//
+// Single-series def shape:
 //   id, label, icon, defaultX, defaultY, defaultWidth, defaultHeight
-//   getValue()     → current numeric value (called on tick)
-//   formatY(n)     → axis label formatter
-//   color          → CSS variable name or hex for the line / fill
+//   color          → hex string for the line / fill
+//   getValue()     → current numeric value
+//   formatY(n)     → Y axis label formatter
+//
+// Dual-series def shape — add a `series` array instead of getValue/color:
+//   series: [
+//     { label, color, getValue() },
+//     { label, color, getValue() }
+//   ]
+//   formatY(n)     → shared Y axis formatter
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHART_DEFS = [
+    // ── Army Value ─────────────────────────────────────────────────────────────
     {
         id:           'chart-army-value',
         label:        'ARMY VALUE',
         icon:         '⚙',
         defaultX:     420,
         defaultY:     50,
-        defaultWidth: 300,   // px — initial width (saved to layout)
-        defaultHeight:180,   // px — initial height (saved to layout)
-        color:        '#4ab4ff',   // --c-accent
+        defaultWidth: 300,
+        defaultHeight:180,
+        color:        '#4ab4ff',
         getValue() {
             const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
             return t ? Math.round(t.totalMetalCost || 0) : 0;
         },
+        formatY(n) {
+            if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+            if (n >= 10_000)    return (n / 1_000).toFixed(0) + 'K';
+            return Math.round(n).toLocaleString();
+        }
+    },
+
+    // ── Kill / Death Ratio ─────────────────────────────────────────────────────
+    // Single line hovering around 1.0 — spikes on hot streaks, dips on disasters.
+    // Clamped to [0, 5] so one lucky nuke doesn't wreck the scale.
+    {
+        id:           'chart-kd-ratio',
+        label:        'K/D RATIO',
+        icon:         '✕',
+        defaultX:     420,
+        defaultY:     250,
+        defaultWidth: 300,
+        defaultHeight:180,
+        color:        '#30f0a0',
+        getValue() {
+            const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+            if (!t) return 0;
+            const kills  = t.killedCount || 0;
+            const losses = t.lostCount   || 0;
+            if (losses === 0) return kills > 0 ? Math.min(5, kills) : 0;
+            return Math.min(5, kills / losses);
+        },
+        formatY(n) {
+            return n.toFixed(2);
+        }
+    },
+
+    // ── Damage Dealt vs Damage Taken ───────────────────────────────────────────
+    // Dual-series: blue (dealt) vs red (taken).
+    // The gap between them is the story — crossings are dramatic moments.
+    {
+        id:           'chart-damage',
+        label:        'DAMAGE',
+        icon:         '▲',
+        defaultX:     420,
+        defaultY:     450,
+        defaultWidth: 300,
+        defaultHeight:180,
+        series: [
+            {
+                label: 'DEALT',
+                color: '#4ab4ff',
+                getValue() {
+                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+                    return t ? Math.round(t.totalDamageDealt || 0) : 0;
+                }
+            },
+            {
+                label: 'TAKEN',
+                color: '#ff3b5c',
+                getValue() {
+                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+                    return t ? Math.round(t.totalDamageTaken || 0) : 0;
+                }
+            }
+        ],
         formatY(n) {
             if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
             if (n >= 10_000)    return (n / 1_000).toFixed(0) + 'K';
@@ -242,46 +312,52 @@ const CHART_DEFS = [
 
 /**
  * BARChart — lightweight native-canvas line chart.
+ * Supports 1 or 2 series.
  *
  * Lifecycle:
  *   new BARChart(canvas, def)
- *   .push(value)    — add a new data point; starts lerp animation
- *   .resize(w, h)   — sync canvas physical px to new container size
- *   .destroy()      — cancel RAF, free refs
+ *   .push(value)           — single-series: add a data point
+ *   .pushSeries(i, value)  — add a point for series index i
+ *   .resize(w, h)          — sync canvas to new container size
+ *   .clear()               — wipe all data, back to "awaiting data"
+ *   .destroy()             — cancel RAF, free refs
  */
 class BARChart {
     constructor(canvas, def) {
         this.canvas  = canvas;
         this.ctx     = canvas.getContext('2d');
         this.def     = def;
+        this.isDual  = Array.isArray(def.series);
 
-        // Data ring-buffer — keep last N samples
-        this.MAX_POINTS = 60;
-        this.data       = [];          // committed values
-        this.displayData = [];         // animated (lerped) values we render
+        const N = this.isDual ? 2 : 1;
 
-        // Animation
-        this._raf        = null;
-        this._animFrom   = null;   // snapshot of displayData at anim start
-        this._animTo     = null;   // snapshot after push
-        this._animT      = 1;      // 0→1, 1 = settled
-        this.ANIM_DUR_MS = 380;    // ms for full lerp
+        this.MAX_POINTS  = 60;
+        this.data        = Array.from({ length: N }, () => []);
+        this.displayData = Array.from({ length: N }, () => []);
+
+        this._animFrom   = Array(N).fill(null);
+        this._animTo     = Array(N).fill(null);
+        this._animT      = 1;
+        this.ANIM_DUR_MS = 380;
         this._animStart  = 0;
 
-        // Padding (px) — space for axis labels
         this.PAD = { top: 10, right: 10, bottom: 26, left: 48 };
 
         this._loop = this._loop.bind(this);
         this._raf  = requestAnimationFrame(this._loop);
     }
 
-    push(value) {
-        this.data.push(value);
-        if (this.data.length > this.MAX_POINTS) this.data.shift();
+    push(value) { this.pushSeries(0, value); }
 
-        // Snapshot animation targets
-        this._animFrom  = [...this.displayData];
-        this._animTo    = [...this.data];
+    pushSeries(i, value) {
+        this.data[i].push(value);
+        if (this.data[i].length > this.MAX_POINTS) this.data[i].shift();
+
+        // Re-snapshot all series so animation fires together
+        for (let s = 0; s < this.data.length; s++) {
+            this._animFrom[s] = [...this.displayData[s]];
+            this._animTo[s]   = [...this.data[s]];
+        }
         this._animT     = 0;
         this._animStart = performance.now();
     }
@@ -295,49 +371,59 @@ class BARChart {
         this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
+    clear() {
+        const N = this.isDual ? 2 : 1;
+        this.data        = Array.from({ length: N }, () => []);
+        this.displayData = Array.from({ length: N }, () => []);
+        this._animFrom   = Array(N).fill(null);
+        this._animTo     = Array(N).fill(null);
+        this._animT      = 1;
+    }
+
     destroy() {
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = null;
     }
 
-    // ── Internal animation loop ───────────────────────────────────────────────
+    // ── Animation loop ────────────────────────────────────────────────────────
 
     _loop(ts) {
         if (!this._raf) return;
 
-        // Advance lerp
         if (this._animT < 1) {
             const elapsed = ts - this._animStart;
             this._animT   = Math.min(1, elapsed / this.ANIM_DUR_MS);
             const ease    = this._easeOutCubic(this._animT);
 
-            this.displayData = this._animTo.map((toVal, i) => {
-                const fromVal = (this._animFrom && this._animFrom[i] !== undefined)
-                    ? this._animFrom[i]
-                    : toVal;
-                return fromVal + (toVal - fromVal) * ease;
-            });
+            for (let s = 0; s < this.data.length; s++) {
+                if (!this._animTo[s]) continue;
+                this.displayData[s] = this._animTo[s].map((toVal, i) => {
+                    const fromVal = this._animFrom[s]?.[i] ?? toVal;
+                    return fromVal + (toVal - fromVal) * ease;
+                });
+            }
         }
 
         this._draw();
         this._raf = requestAnimationFrame(this._loop);
     }
 
-    _easeOutCubic(t) {
-        return 1 - Math.pow(1 - t, 3);
-    }
+    _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
     // ── Drawing ───────────────────────────────────────────────────────────────
 
     _draw() {
         const { canvas, ctx, def, PAD } = this;
-        const W = canvas.width  / (window.devicePixelRatio || 1);
-        const H = canvas.height / (window.devicePixelRatio || 1);
-        const pts = this.displayData;
+        const W  = canvas.width  / (window.devicePixelRatio || 1);
+        const H  = canvas.height / (window.devicePixelRatio || 1);
+        const cX = PAD.left;
+        const cY = PAD.top;
+        const cW = W - PAD.left - PAD.right;
+        const cH = H - PAD.top  - PAD.bottom;
 
         ctx.clearRect(0, 0, W, H);
 
-        // Background panel
+        // Background
         ctx.fillStyle = 'rgba(8, 12, 20, 0.72)';
         this._roundRect(ctx, 0, 0, W, H, 4);
         ctx.fill();
@@ -348,124 +434,148 @@ class BARChart {
         this._roundRect(ctx, 0.5, 0.5, W - 1, H - 1, 4);
         ctx.stroke();
 
-        // Chart area
-        const cX = PAD.left;
-        const cY = PAD.top;
-        const cW = W - PAD.left - PAD.right;
-        const cH = H - PAD.top  - PAD.bottom;
+        // Check we have enough data to draw
+        const allPts   = this.displayData.flat().filter(v => !isNaN(v));
+        const hasData  = this.displayData.some(s => s.length >= 2);
 
-        if (pts.length < 2) {
+        if (!hasData) {
             this._drawHeader(ctx, W, H);
             this._drawNoData(ctx, cX, cY, cW, cH);
             return;
         }
 
-        // Value range with a sensible minimum span
-        let minV = Math.min(...pts);
-        let maxV = Math.max(...pts);
-        const span = maxV - minV;
-
-        // Pad range so the line never touches top/bottom edge
+        // Shared Y range across all series
+        let minV       = Math.min(...allPts);
+        let maxV       = Math.max(...allPts);
+        const span     = maxV - minV;
         const rangePad = span > 0 ? span * 0.12 : Math.max(maxV * 0.1, 100);
         minV = Math.max(0, minV - rangePad);
         maxV = maxV + rangePad;
-        const range = maxV - minV || 1;
+        const range    = maxV - minV || 1;
 
-        // Gridlines + Y axis labels
+        const isKD = !this.isDual && def.id === 'chart-kd-ratio';
+        if (isKD) { minV = 0; }
+
+        // Gridlines + Y labels
         ctx.font         = '9px "Share Tech Mono", monospace';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'middle';
-        const Y_TICKS    = 4;
 
-        for (let i = 0; i <= Y_TICKS; i++) {
-            const v  = minV + (range * i / Y_TICKS);
-            const y  = cY + cH - (cH * i / Y_TICKS);
-
-            // Gridline
+        for (let i = 0; i <= 4; i++) {
+            const v = minV + (range * i / 4);
+            const y = cY + cH - (cH * i / 4);
             ctx.beginPath();
-            ctx.strokeStyle = i === 0
-                ? 'rgba(90,180,255,0.22)'     // x-axis slightly brighter
-                : 'rgba(90,180,255,0.08)';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = i === 0 ? 'rgba(90,180,255,0.22)' : 'rgba(90,180,255,0.08)';
+            ctx.lineWidth   = 1;
             ctx.moveTo(cX, y);
             ctx.lineTo(cX + cW, y);
             ctx.stroke();
-
-            // Label
             ctx.fillStyle = 'rgba(160,190,220,0.55)';
             ctx.fillText(def.formatY(v), cX - 5, y);
         }
 
-        // Convert data to screen coords
-        const toX = (i) => cX + (i / (pts.length - 1)) * cW;
-        const toY = (v) => cY + cH - ((v - minV) / range) * cH;
-
-        // Gradient fill under line
-        const grad = ctx.createLinearGradient(0, cY, 0, cY + cH);
-        grad.addColorStop(0, this._hexAlpha(def.color, 0.28));
-        grad.addColorStop(1, this._hexAlpha(def.color, 0.02));
-
-        ctx.beginPath();
-        ctx.moveTo(toX(0), toY(pts[0]));
-        for (let i = 1; i < pts.length; i++) {
-            const x0 = toX(i - 1), y0 = toY(pts[i - 1]);
-            const x1 = toX(i),     y1 = toY(pts[i]);
-            const cpx = (x0 + x1) / 2;
-            ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+        // K/D: dashed 1.0 reference line
+        if (isKD && minV <= 1 && maxV >= 1) {
+            const refY = cY + cH - ((1 - minV) / range) * cH;
+            ctx.beginPath();
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(160,190,220,0.30)';
+            ctx.lineWidth   = 1;
+            ctx.moveTo(cX, refY);
+            ctx.lineTo(cX + cW, refY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.font         = '8px "Share Tech Mono", monospace';
+            ctx.fillStyle    = 'rgba(160,190,220,0.40)';
+            ctx.textAlign    = 'left';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('1.0', cX + 2, refY - 1);
         }
-        ctx.lineTo(toX(pts.length - 1), cY + cH);
-        ctx.lineTo(toX(0), cY + cH);
-        ctx.closePath();
-        ctx.fillStyle = grad;
-        ctx.fill();
 
-        // Line
-        ctx.beginPath();
-        ctx.moveTo(toX(0), toY(pts[0]));
-        for (let i = 1; i < pts.length; i++) {
-            const x0 = toX(i - 1), y0 = toY(pts[i - 1]);
-            const x1 = toX(i),     y1 = toY(pts[i]);
-            const cpx = (x0 + x1) / 2;
-            ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+        const toX = (pts, i) => cX + (i / (pts.length - 1)) * cW;
+        const toY = (v)       => cY + cH - ((v - minV) / range) * cH;
+
+        // Series list: unified structure for single and dual
+        const seriesList = this.isDual
+            ? def.series.map((s, i) => ({ pts: this.displayData[i], color: s.color, label: s.label }))
+            : [{ pts: this.displayData[0], color: def.color, label: def.label }];
+
+        for (const { pts, color } of seriesList) {
+            if (pts.length < 2) continue;
+
+            // Gradient fill
+            const grad = ctx.createLinearGradient(0, cY, 0, cY + cH);
+            grad.addColorStop(0, this._hexAlpha(color, 0.20));
+            grad.addColorStop(1, this._hexAlpha(color, 0.01));
+
+            ctx.beginPath();
+            ctx.moveTo(toX(pts, 0), toY(pts[0]));
+            for (let i = 1; i < pts.length; i++) {
+                const cpx = (toX(pts, i - 1) + toX(pts, i)) / 2;
+                ctx.bezierCurveTo(cpx, toY(pts[i - 1]), cpx, toY(pts[i]), toX(pts, i), toY(pts[i]));
+            }
+            ctx.lineTo(toX(pts, pts.length - 1), cY + cH);
+            ctx.lineTo(toX(pts, 0), cY + cH);
+            ctx.closePath();
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Line
+            ctx.beginPath();
+            ctx.moveTo(toX(pts, 0), toY(pts[0]));
+            for (let i = 1; i < pts.length; i++) {
+                const cpx = (toX(pts, i - 1) + toX(pts, i)) / 2;
+                ctx.bezierCurveTo(cpx, toY(pts[i - 1]), cpx, toY(pts[i]), toX(pts, i), toY(pts[i]));
+            }
+            ctx.strokeStyle = color;
+            ctx.lineWidth   = 1.8;
+            ctx.lineJoin    = 'round';
+            ctx.lineCap     = 'round';
+            ctx.shadowColor = color;
+            ctx.shadowBlur  = 6;
+            ctx.stroke();
+            ctx.shadowBlur  = 0;
+
+            // End dot
+            const lx = toX(pts, pts.length - 1);
+            const ly = toY(pts[pts.length - 1]);
+            ctx.beginPath();
+            ctx.arc(lx, ly, 3, 0, Math.PI * 2);
+            ctx.fillStyle   = '#fff';
+            ctx.shadowColor = color;
+            ctx.shadowBlur  = 8;
+            ctx.fill();
+            ctx.shadowBlur  = 0;
         }
-        ctx.strokeStyle = def.color;
-        ctx.lineWidth   = 1.8;
-        ctx.lineJoin    = 'round';
-        ctx.lineCap     = 'round';
-        ctx.shadowColor  = def.color;
-        ctx.shadowBlur   = 6;
-        ctx.stroke();
-        ctx.shadowBlur   = 0;
 
-        // Latest value dot
-        const lastX = toX(pts.length - 1);
-        const lastY = toY(pts[pts.length - 1]);
-        ctx.beginPath();
-        ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff';
-        ctx.shadowColor = def.color;
-        ctx.shadowBlur  = 8;
-        ctx.fill();
-        ctx.shadowBlur  = 0;
-
-        // Latest value label (top-right of chart area)
+        // Latest value labels
         ctx.font         = '10px "Rajdhani", sans-serif';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
-        ctx.fillStyle    = def.color;
-        ctx.fillText(def.formatY(pts[pts.length - 1]), cX + cW, cY + 1);
+
+        if (this.isDual) {
+            seriesList.forEach(({ pts, color, label }, idx) => {
+                if (!pts.length) return;
+                ctx.fillStyle = color;
+                ctx.fillText(`${label} ${def.formatY(pts[pts.length - 1])}`, cX + cW, cY + 1 + idx * 13);
+            });
+        } else {
+            const { pts, color } = seriesList[0];
+            if (pts.length) {
+                ctx.fillStyle = color;
+                ctx.fillText(def.formatY(pts[pts.length - 1]), cX + cW, cY + 1);
+            }
+        }
 
         this._drawHeader(ctx, W, H);
     }
 
     _drawHeader(ctx, W, H) {
-        const { def, PAD } = this;
-        // Icon + label at bottom-left (inside bottom padding)
         ctx.font         = '10px "Rajdhani", sans-serif';
         ctx.textAlign    = 'left';
         ctx.textBaseline = 'bottom';
         ctx.fillStyle    = 'rgba(160,190,220,0.55)';
-        ctx.fillText(`${def.icon}  ${def.label}`, PAD.left + 2, H - 5);
+        ctx.fillText(`${this.def.icon}  ${this.def.label}`, this.PAD.left + 2, H - 5);
     }
 
     _drawNoData(ctx, cX, cY, cW, cH) {
@@ -475,8 +585,6 @@ class BARChart {
         ctx.fillStyle    = 'rgba(160,190,220,0.25)';
         ctx.fillText('— awaiting data —', cX + cW / 2, cY + cH / 2);
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     _roundRect(ctx, x, y, w, h, r) {
         if (ctx.roundRect) {
@@ -497,7 +605,6 @@ class BARChart {
     }
 
     _hexAlpha(color, alpha) {
-        // Works with #rrggbb or rgb/rgba — fallback to raw with opacity via globalAlpha trick
         if (color.startsWith('#') && color.length === 7) {
             const r = parseInt(color.slice(1, 3), 16);
             const g = parseInt(color.slice(3, 5), 16);
@@ -514,6 +621,8 @@ for (const cd of CHART_DEFS) {
     (function(cd) {
         console.log('Registering Chart Widget:', cd.id);
 
+        const isDual = Array.isArray(cd.series);
+
         widgetManager.register({
             id:             cd.id,
             type:           'chart',
@@ -522,17 +631,14 @@ for (const cd of CHART_DEFS) {
             defaultY:       cd.defaultY,
             defaultScale:   1.0,
             defaultEnabled: true,
-            _chart:         null,     // BARChart instance, set in render()
-            _observer:      null,     // ResizeObserver
-            _getValue:      cd.getValue,
-            _prevValue:     null,
+            _chart:         null,
+            _observer:      null,
+            _prevValue:     isDual ? [null, null] : null,
 
             render(def, inner) {
-                // Container drives physical size — uses em so scroll-to-scale works
                 inner.innerHTML = `
                     <div class="wc-chart-frame" id="${cd.id}-frame">
                         <canvas class="wc-canvas" id="${cd.id}-canvas"></canvas>
-                        <!-- Resize handle (bottom-right corner) -->
                         <div class="wc-resize-handle" id="${cd.id}-resize" title="Drag to resize"></div>
                     </div>`;
 
@@ -540,21 +646,18 @@ for (const cd of CHART_DEFS) {
                 const canvas = inner.querySelector('.wc-canvas');
                 const handle = inner.querySelector('.wc-resize-handle');
 
-                // Retrieve saved or default pixel dimensions
-                const wm     = window.widgetManager;
-                const saved  = wm?.layout?.[cd.id] || {};
-                const initW  = saved.chartW || cd.defaultWidth;
-                const initH  = saved.chartH || cd.defaultHeight;
+                const wm    = window.widgetManager;
+                const saved = wm?.layout?.[cd.id] || {};
+                const initW = saved.chartW || cd.defaultWidth;
+                const initH = saved.chartH || cd.defaultHeight;
 
                 frame.style.width  = initW + 'px';
                 frame.style.height = initH + 'px';
 
-                // Instantiate chart engine
                 const chart = new BARChart(canvas, cd);
                 def._chart  = chart;
                 chart.resize(initW, initH);
 
-                // ResizeObserver keeps canvas in sync when frame is resized
                 const ro = new ResizeObserver(entries => {
                     for (const entry of entries) {
                         const { width, height } = entry.contentRect;
@@ -564,34 +667,23 @@ for (const cd of CHART_DEFS) {
                 ro.observe(frame);
                 def._observer = ro;
 
-                // ── Resize handle drag ────────────────────────────────────────
-                let resizing  = false;
-                let resX, resY, resW, resH;
+                // ── Resize handle (mouse + touch) ─────────────────────────────
+                let resizing = false, resX, resY, resW, resH;
 
-                handle.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();   // don't start widget drag
+                const startResize = (cx, cy) => {
                     resizing = true;
-                    resX = e.clientX; resY = e.clientY;
-                    resW = frame.offsetWidth;
-                    resH = frame.offsetHeight;
-                    document.body.style.cursor = 'nwse-resize';
-                });
-
-                document.addEventListener('mousemove', (e) => {
+                    resX = cx; resY = cy;
+                    resW = frame.offsetWidth; resH = frame.offsetHeight;
+                };
+                const doResize = (cx, cy) => {
                     if (!resizing) return;
-                    const newW = Math.max(140, resW + (e.clientX - resX));
-                    const newH = Math.max(90,  resH + (e.clientY - resY));
-                    frame.style.width  = newW + 'px';
-                    frame.style.height = newH + 'px';
-                    // ResizeObserver will call chart.resize automatically
-                });
-
-                document.addEventListener('mouseup', () => {
+                    frame.style.width  = Math.max(140, resW + (cx - resX)) + 'px';
+                    frame.style.height = Math.max(90,  resH + (cy - resY)) + 'px';
+                };
+                const endResize = () => {
                     if (!resizing) return;
                     resizing = false;
                     document.body.style.cursor = '';
-                    // Persist chart dimensions alongside position/scale
                     const wm2 = window.widgetManager;
                     if (wm2) {
                         const inst = wm2.instances.get(cd.id);
@@ -601,52 +693,58 @@ for (const cd of CHART_DEFS) {
                             wm2._saveLayout();
                         }
                     }
-                });
+                };
 
-                // Touch resize handle
+                handle.addEventListener('mousedown', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    document.body.style.cursor = 'nwse-resize';
+                    startResize(e.clientX, e.clientY);
+                });
+                document.addEventListener('mousemove',  (e) => doResize(e.clientX, e.clientY));
+                document.addEventListener('mouseup',    endResize);
+
                 handle.addEventListener('touchstart', (e) => {
                     if (e.touches.length !== 1) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    resizing = true;
-                    resX = e.touches[0].clientX; resY = e.touches[0].clientY;
-                    resW = frame.offsetWidth;
-                    resH = frame.offsetHeight;
+                    e.preventDefault(); e.stopPropagation();
+                    startResize(e.touches[0].clientX, e.touches[0].clientY);
                 }, { passive: false });
-
                 document.addEventListener('touchmove', (e) => {
-                    if (!resizing || e.touches.length < 1) return;
-                    const newW = Math.max(140, resW + (e.touches[0].clientX - resX));
-                    const newH = Math.max(90,  resH + (e.touches[0].clientY - resY));
-                    frame.style.width  = newW + 'px';
-                    frame.style.height = newH + 'px';
+                    if (!resizing || !e.touches.length) return;
+                    doResize(e.touches[0].clientX, e.touches[0].clientY);
                 }, { passive: false });
-
-                document.addEventListener('touchend', () => {
-                    if (!resizing) return;
-                    resizing = false;
-                    const wm2 = window.widgetManager;
-                    if (wm2) {
-                        const inst = wm2.instances.get(cd.id);
-                        if (inst) {
-                            inst.state.chartW = frame.offsetWidth;
-                            inst.state.chartH = frame.offsetHeight;
-                            wm2._saveLayout();
-                        }
-                    }
-                });
+                document.addEventListener('touchend', endResize);
             },
 
             update(def, inner) {
                 if (!def._chart) return;
-                const raw = def._getValue();
-                // Only push a new point when value actually changes
-                if (raw === def._prevValue) return;
-                def._chart.push(raw);
-                def._prevValue = raw;
+
+                if (isDual) {
+                    cd.series.forEach((s, i) => {
+                        const raw = s.getValue();
+                        if (raw === 0 && def._prevValue[i] !== null) {
+                            def._chart.clear();
+                            def._prevValue = [null, null];
+                            return;
+                        }
+                        if (raw !== def._prevValue[i]) {
+                            def._chart.pushSeries(i, raw);
+                            def._prevValue[i] = raw;
+                        }
+                    });
+                } else {
+                    const raw = cd.getValue();
+                    if (raw === 0 && def._prevValue !== null) {
+                        def._chart.clear();
+                        def._prevValue = null;
+                        return;
+                    }
+                    if (raw !== def._prevValue) {
+                        def._chart.push(raw);
+                        def._prevValue = raw;
+                    }
+                }
             },
 
-            // Clean up on widget remove (future-proofing)
             destroy(def) {
                 if (def._observer) { def._observer.disconnect(); def._observer = null; }
                 if (def._chart)    { def._chart.destroy();       def._chart    = null; }
@@ -654,6 +752,20 @@ for (const cd of CHART_DEFS) {
         });
     })(cd);
 }
+
+// ── chartWidgets — public API ─────────────────────────────────────────────────
+// Call chartWidgets.reset() from uiManager.resetAll() on new game / manual reset.
+
+const chartWidgets = {
+    reset() {
+        for (const cd of CHART_DEFS) {
+            const def = widgetManager.widgets.get(cd.id);
+            if (!def?._chart) continue;
+            def._chart.clear();
+            def._prevValue = Array.isArray(cd.series) ? [null, null] : null;
+        }
+    }
+};
 
 
 widgetManager.register({

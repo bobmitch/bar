@@ -358,14 +358,15 @@ class UIManager {
         const gameTimeEl = document.getElementById('game-time');
         if (gameTimeEl) gameTimeEl.textContent = '00:00';
 
-        // Tick widgets so they render zeroed-out values immediately
-        if (typeof statWidgets !== 'undefined') {
-            statWidgets.tick();
-        }
+        
 
         if (typeof chartWidgets !== 'undefined') {
             chartWidgets.reset();
-            chartWidgets.tick();
+        }
+
+        // Tick widgets so they render zeroed-out values immediately
+        if (typeof statWidgets !== 'undefined') {
+            statWidgets.tick(); // includes charts as well
         }
 
         console.log('✅ Reset complete');
