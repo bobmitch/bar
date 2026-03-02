@@ -453,9 +453,6 @@ class BARChart {
         maxV = maxV + rangePad;
         const range    = maxV - minV || 1;
 
-        const isKD = !this.isDual && def.id === 'chart-kd-ratio';
-        if (isKD) { minV = 0; }
-
         // Gridlines + Y labels
         ctx.font         = '9px "Share Tech Mono", monospace';
         ctx.textAlign    = 'right';
@@ -472,24 +469,6 @@ class BARChart {
             ctx.stroke();
             ctx.fillStyle = 'rgba(160,190,220,0.55)';
             ctx.fillText(def.formatY(v), cX - 5, y);
-        }
-
-        // K/D: dashed 1.0 reference line
-        if (isKD && minV <= 1 && maxV >= 1) {
-            const refY = cY + cH - ((1 - minV) / range) * cH;
-            ctx.beginPath();
-            ctx.setLineDash([4, 4]);
-            ctx.strokeStyle = 'rgba(160,190,220,0.30)';
-            ctx.lineWidth   = 1;
-            ctx.moveTo(cX, refY);
-            ctx.lineTo(cX + cW, refY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.font         = '8px "Share Tech Mono", monospace';
-            ctx.fillStyle    = 'rgba(160,190,220,0.40)';
-            ctx.textAlign    = 'left';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText('1.0', cX + 2, refY - 1);
         }
 
         const toX = (pts, i) => cX + (i / (pts.length - 1)) * cW;
