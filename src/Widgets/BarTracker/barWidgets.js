@@ -249,6 +249,8 @@ const CHART_DEFS = [
     // ── Kill / Death Ratio ─────────────────────────────────────────────────────
     // Single line hovering around 1.0 — spikes on hot streaks, dips on disasters.
     // Clamped to [0, 5] so one lucky nuke doesn't wreck the scale.
+    // Change detection uses raw kills+losses, not the derived ratio, to avoid
+    // false equality (e.g. 2/1 and 4/2 both equal 2.0).
     {
         id:           'chart-kd-ratio',
         label:        'K/D RATIO',
@@ -260,11 +262,13 @@ const CHART_DEFS = [
         color:        '#30f0a0',
         getValue() {
             const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
-            if (!t) return 0;
+            if (!t) return { ratio: 0, kills: 0, losses: 0 };
             const kills  = t.killedCount || 0;
             const losses = t.lostCount   || 0;
-            if (losses === 0) return kills > 0 ? Math.min(5, kills) : 0;
-            return Math.min(5, kills / losses);
+            const ratio  = losses === 0
+                ? (kills > 0 ? Math.min(5, kills) : 0)
+                : Math.min(5, kills / losses);
+            return { ratio, kills, losses };
         },
         formatY(n) {
             return n.toFixed(2);
@@ -737,14 +741,22 @@ for (const cd of CHART_DEFS) {
                     });
                 } else {
                     const raw = cd.getValue();
-                    if (raw === 0 && def._prevValue !== null) {
+
+                    // K/D returns an object so we can detect changes on the
+                    // underlying integers rather than the derived float
+                    const isObj = raw !== null && typeof raw === 'object';
+                    const pushVal  = isObj ? raw.ratio  : raw;
+                    const changeKey = isObj ? `${raw.kills}/${raw.losses}` : raw;
+                    const resetVal  = isObj ? raw.ratio  : raw;
+
+                    if (resetVal === 0 && def._prevValue !== null) {
                         def._chart.clear();
                         def._prevValue = null;
                         return;
                     }
-                    if (raw !== def._prevValue) {
-                        def._chart.push(raw);
-                        def._prevValue = raw;
+                    if (changeKey !== def._prevValue) {
+                        def._chart.push(pushVal);
+                        def._prevValue = changeKey;
                     }
                 }
             },
