@@ -1512,3 +1512,118 @@ body[data-view="streaming"] {
     position:relative;
     /* give size for initial load before image is loaded, so widget is grab-able and shows scale hint */
 }
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHART WIDGET  (wm-type-chart)
+   Append to the streaming / widget section of style.css.
+
+   Design notes:
+   • .wc-chart-frame is sized in raw px (set by JS from saved or default
+     dimensions) and is what ResizeObserver watches to feed canvas px dims.
+   • The frame is NOT em-scaled — the widget's overall position/scale via
+     scroll still works because widgetManager applies font-size to .wm-widget,
+     which affects text inside the canvas (drawn in JS) but the frame itself
+     preserves its pixel dimensions. This mirrors how the image-display widget
+     works with fixed em widths.
+   • The resize handle sits in the bottom-right corner; it is only grab-able
+     during edit mode (pointer-events toggled via .wm-editing).
+════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Widget container ──────────────────────────────────────────────────────── */
+
+.wm-type-chart .wm-inner {
+    pointer-events: none;   /* interactions on frame/handle; not inner itself */
+}
+
+/* ── Chart frame — sized by JS, observed by ResizeObserver ─────────────────── */
+
+.wc-chart-frame {
+    position:      relative;
+    display:       block;
+    border-radius: 4px;
+    overflow:      hidden;
+    /* Cursor hint while hovering (edit-mode shows handle) */
+    cursor:        grab;
+}
+
+.wm-dragging .wc-chart-frame {
+    cursor: grabbing;
+}
+
+/* ── Canvas — fills the frame exactly via ResizeObserver ─────────────────── */
+
+.wc-canvas {
+    display:        block;
+    width:          100%;
+    height:         100%;
+    border-radius:  4px;
+    pointer-events: none;
+}
+
+/* ── Resize handle ──────────────────────────────────────────────────────────
+   Visible only during edit mode (.wm-editing) so it doesn't pollute the
+   stream view. 12×12 px corner grip drawn entirely in CSS.
+────────────────────────────────────────────────────────────────────────── */
+
+.wc-resize-handle {
+    position:       absolute;
+    bottom:         0;
+    right:          0;
+    width:          18px;
+    height:         18px;
+    cursor:         nwse-resize;
+    pointer-events: none;   /* off by default — edit mode turns on */
+    opacity:        0;
+    transition:     opacity 0.2s ease;
+    z-index:        5;
+}
+
+/* Three diagonal lines — classic resize grip */
+.wc-resize-handle::before,
+.wc-resize-handle::after {
+    content:    '';
+    position:   absolute;
+    bottom:     3px;
+    right:      3px;
+    background: rgba(90, 180, 255, 0.65);
+    border-radius: 1px;
+}
+
+/* Diagonal stripe 1 */
+.wc-resize-handle::before {
+    width:     10px;
+    height:    1.5px;
+    transform: rotate(-45deg) translate(3px, -2px);
+    transform-origin: bottom right;
+    box-shadow:
+        0 -4px 0 rgba(90, 180, 255, 0.65),
+        0 -8px 0 rgba(90, 180, 255, 0.65);
+}
+
+/* Diagonal stripe 2 (shorter, bottom) */
+.wc-resize-handle::after {
+    width:     6px;
+    height:    1.5px;
+    transform: rotate(-45deg) translate(1px, 1px);
+    transform-origin: bottom right;
+}
+
+/* Reveal handle in edit mode */
+.wm-editing .wc-resize-handle {
+    opacity:        1;
+    pointer-events: all;
+}
+
+/* ── Edit-mode outline (matches other widget types) ────────────────────────── */
+
+.wm-type-chart.wm-editing {
+    outline:        1px dashed rgba(0, 180, 255, 0.38);
+    outline-offset: 4px;
+}
+
+.wm-type-chart.wm-editing:hover {
+    outline-color: rgba(0, 180, 255, 0.7);
+    box-shadow:    0 0 10px rgba(0, 180, 255, 0.12);
+}

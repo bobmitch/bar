@@ -363,6 +363,11 @@ class UIManager {
             statWidgets.tick();
         }
 
+        if (typeof chartWidgets !== 'undefined') {
+            chartWidgets.reset();
+            chartWidgets.tick();
+        }
+
         console.log('✅ Reset complete');
     }
 
