@@ -627,11 +627,15 @@ for (const cd of CHART_DEFS) {
 
                 const wm    = window.widgetManager;
                 const saved = wm?.layout?.[cd.id] || {};
-                const initW = saved.chartW || cd.defaultWidth;
-                const initH = saved.chartH || cd.defaultHeight;
+                let initW = saved.chartW || cd.defaultWidth;
+                let initH = saved.chartH || cd.defaultHeight;
 
-                frame.style.width  = initW + 'px';
-                frame.style.height = initH + 'px';
+                // Apply saved scale to initial frame size
+                const widgetEl = inner.closest('.wm-widget');
+                const initScale = parseFloat(widgetEl?.style.fontSize) || 1.0;
+
+                frame.style.width  = (initW * initScale) + 'px';
+                frame.style.height = (initH * initScale) + 'px';
 
                 const chart = new BARChart(canvas, cd);
                 def._chart  = chart;
@@ -645,6 +649,22 @@ for (const cd of CHART_DEFS) {
                 });
                 ro.observe(frame);
                 def._observer = ro;
+
+                // ── Scale observer ────────────────────────────────────────────
+                // widgetManager sets fontSize on the .wm-widget element when the
+                // user scrolls to scale. We watch for that and resize the frame
+                // proportionally so the chart scales like every other widget.
+                if (widgetEl) {
+                    const scaleObserver = new MutationObserver(() => {
+                        const fs = parseFloat(widgetEl.style.fontSize) || 1.0;
+                        frame.style.width  = (initW * fs) + 'px';
+                        frame.style.height = (initH * fs) + 'px';
+                        // ResizeObserver handles the canvas resize automatically
+                    });
+                    scaleObserver.observe(widgetEl, { attributes: true, attributeFilter: ['style'] });
+                    // Store so chartWidgets.reset() can disconnect if needed
+                    def._scaleObserver = scaleObserver;
+                }
 
                 // ── Resize handle (mouse + touch) ─────────────────────────────
                 let resizing = false, resX, resY, resW, resH;
@@ -667,8 +687,13 @@ for (const cd of CHART_DEFS) {
                     if (wm2) {
                         const inst = wm2.instances.get(cd.id);
                         if (inst) {
-                            inst.state.chartW = frame.offsetWidth;
-                            inst.state.chartH = frame.offsetHeight;
+                            // Save base dimensions at scale 1.0 so MutationObserver
+                            // math stays correct across sessions
+                            const fs = parseFloat(widgetEl?.style.fontSize) || 1.0;
+                            inst.state.chartW = frame.offsetWidth  / fs;
+                            inst.state.chartH = frame.offsetHeight / fs;
+                            initW = inst.state.chartW;
+                            initH = inst.state.chartH;
                             wm2._saveLayout();
                         }
                     }
