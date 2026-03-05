@@ -182,6 +182,9 @@ class EventHandler {
             case BAR_EVENTS.ALLY_STATES_UPDATE:
                 this.handleAllyStates(data);
                 break;
+            case BAR_EVENTS.ALLY_COLORS_UPDATE:
+                this.handleAllyColors(data);
+                break;
             case BAR_EVENTS.ALL_UNITS:
                 this.handleUpdateAllUnits(data);
                 break;
@@ -372,6 +375,39 @@ class EventHandler {
             team.energyStats = stats.energy;
         }
     }
+
+    /**
+     * ALLY COLORS
+     * Stores the in-game team color on each ally team object so
+     * widgets can use matching colors on charts and overlays.
+     *
+     * data.colors shape (keyed by teamID string):
+     *   { playerName, r, g, b, hex }
+     */
+    handleAllyColors(data) {
+        if (typeof gameState === 'undefined') return;
+        if (!data.colors || typeof data.colors !== 'object') return;
+
+        for (const [teamIDStr, colorData] of Object.entries(data.colors)) {
+            const teamID = parseInt(teamIDStr);
+            const team   = gameState.initTeam(teamID, { isMyAlly: true });
+            team.color   = {
+                r:   colorData.r,
+                g:   colorData.g,
+                b:   colorData.b,
+                hex: colorData.hex
+            };
+            // Keep playerName in sync if Lua sent it
+            if (colorData.playerName) team.playerName = colorData.playerName;
+        }
+
+        console.log('🎨 Ally team colors stored:', data.colors);
+    }
+    // ── USAGE EXAMPLE (barWidgets.js or any chart code) ──────────
+    // When you need a per-player color for a chart series, do:
+    //
+    //   const team  = gameState.teams.get(teamID);
+    //   const color = team?.color?.hex ?? '#4ab4ff';   // fallback
 
     /**
      * TRIGGER EVALUATION

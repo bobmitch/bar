@@ -101,6 +101,7 @@ class GameStateStore {
             isMyTeam:         options.isMyTeam   || false,
             isMyAlly:         options.isMyAlly   || false,
             playerName:       options.playerName || null,
+            color:            options.color      || null,
             unitCount:        0,
             totalMetalCost:   0,
             totalDamageDealt: 0,

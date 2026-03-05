@@ -41,6 +41,7 @@ const BAR_EVENTS = Object.freeze({
     // ── Stats ─────────────────────────────────────────────────────────────────
     FULL_STATS_UPDATE           : 'FullStatsUpdate',    // My team's resource + combat stats
     ALLY_STATS_UPDATE           : 'AllyStatsUpdate',    // All teams' resource stats
+    ALLY_COLORS_UPDATE          : 'AllyColorsUpdate',   // In-game team colours
 
     // ── Status ────────────────────────────────────────────────────────────────
     OVERFLOW_STATUS_CHANGED     : 'OverflowStatusChanged',
@@ -129,6 +130,14 @@ const BAR_EVENT_META = Object.freeze({
         throttle       : true,
         icon           : '📈',
         label          : 'Ally Stats',
+    },
+
+    [BAR_EVENTS.ALLY_COLORS_UPDATE]: {
+        logToBattleLog : false,
+        logPriority    : 'low',
+        throttle       : false,
+        icon           : '🎨',
+        label          : 'Ally Colors',
     },
 
     [BAR_EVENTS.OVERFLOW_STATUS_CHANGED]: {
