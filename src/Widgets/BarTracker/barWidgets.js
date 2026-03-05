@@ -309,7 +309,31 @@ const CHART_DEFS = [
             if (n >= 10_000)    return (n / 1_000).toFixed(0) + 'K';
             return Math.round(n).toLocaleString();
         }
-    }
+    },
+
+    // ── Team Army Value ────────────────────────────────────────────────────────
+    // One line per ally team, colored with the player's in-game color.
+    // Series list is built dynamically in update() once AllyColorsUpdate
+    // has populated gameState team colors — no static series array needed.
+    // seriesCount gives BARChart its initial buffer size; it will be rebuilt
+    // via chart.rebuildSeries() if team count changes mid-game.
+    {
+        id:             'chart-team-army-value',
+        label:          'TEAM ARMY VALUE',
+        icon:           '⚙',
+        defaultX:       730,
+        defaultY:       50,
+        defaultWidth:   340,
+        defaultHeight:  200,
+        defaultEnabled: false,          // streamer enables this, disables solo chart
+        isTeamChart:    true,           // flag consumed by the register loop
+        seriesCount:    4,              // generous initial buffer; clear() uses this
+        formatY(n) {
+            if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+            if (n >= 10_000)    return (n / 1_000).toFixed(0) + 'K';
+            return Math.round(n).toLocaleString();
+        }
+    },
 ];
 
 // ── Chart rendering engine ────────────────────────────────────────────────────
@@ -333,7 +357,10 @@ class BARChart {
         this.def     = def;
         this.isDual  = Array.isArray(def.series);
 
-        const N = this.isDual ? 2 : 1;
+        // N-series support: honour an explicit seriesCount on the def,
+        // otherwise fall back to series array length or 1 for single-series.
+        const N = def.seriesCount ?? (this.isDual ? def.series.length : 1);
+        this.seriesCount = N;
 
         this.MAX_POINTS  = 60;
         this.data        = Array.from({ length: N }, () => []);
@@ -376,7 +403,7 @@ class BARChart {
     }
 
     clear() {
-        const N = this.isDual ? 2 : 1;
+        const N = this.seriesCount;
         this.data        = Array.from({ length: N }, () => []);
         this.displayData = Array.from({ length: N }, () => []);
         this._animFrom   = Array(N).fill(null);
@@ -531,24 +558,20 @@ class BARChart {
             ctx.shadowBlur  = 0;
         }
 
-        // Latest value labels
+        // Latest value labels — works for 1, 2, or N series
         ctx.font         = '10px "Rajdhani", sans-serif';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
 
-        if (this.isDual) {
-            seriesList.forEach(({ pts, color, label }, idx) => {
-                if (!pts.length) return;
-                ctx.fillStyle = color;
-                ctx.fillText(`${label} ${def.formatY(pts[pts.length - 1])}`, cX + cW, cY + 1 + idx * 13);
-            });
-        } else {
-            const { pts, color } = seriesList[0];
-            if (pts.length) {
-                ctx.fillStyle = color;
-                ctx.fillText(def.formatY(pts[pts.length - 1]), cX + cW, cY + 1);
-            }
-        }
+        seriesList.forEach(({ pts, color, label }, idx) => {
+            if (!pts.length) return;
+            ctx.fillStyle = color;
+            // Single-series: omit the label prefix for a cleaner look
+            const text = (seriesList.length === 1)
+                ? def.formatY(pts[pts.length - 1])
+                : `${label} ${def.formatY(pts[pts.length - 1])}`;
+            ctx.fillText(text, cX + cW, cY + 1 + idx * 13);
+        });
 
         this._drawHeader(ctx, W, H);
     }
@@ -643,6 +666,18 @@ for (const cd of CHART_DEFS) {
 
                 const chart = new BARChart(canvas, cd);
                 def._chart  = chart;
+
+                // For team charts, patch def.series so _draw()'s seriesList
+                // builder reads from def._teamSeries (populated by update()).
+                // We do this by making def.series a live getter.
+                if (cd.isTeamChart) {
+                    Object.defineProperty(chart.def, 'series', {
+                        get() { return def._teamSeries ?? []; },
+                        configurable: true
+                    });
+                    chart.isDual = true; // ensures _draw() uses the multi-series path
+                }
+
                 chart.resize(initW, initH);
 
                 const ro = new ResizeObserver(entries => {
@@ -726,6 +761,45 @@ for (const cd of CHART_DEFS) {
             update(def, inner) {
                 if (!def._chart) return;
 
+                // ── Team army value: N-series dynamic update ───────────────
+                if (cd.isTeamChart) {
+                    if (typeof gameState === 'undefined') return;
+
+                    // Build the current ordered team list from gameState
+                    const teams = [];
+                    for (const [, team] of gameState.teams) {
+                        if (team.isMyAlly) teams.push(team);
+                    }
+                    if (!teams.length) return;
+
+                    // Rebuild chart series buffers if team count changed
+                    if (teams.length !== def._chart.seriesCount) {
+                        def._chart.seriesCount = teams.length;
+                        def._chart.clear();
+                        def._prevValue = Array(teams.length).fill(null);
+                    }
+
+                    // Push each team's current army value
+                    teams.forEach((team, i) => {
+                        const raw = Math.round(team.totalMetalCost || 0);
+                        if (raw !== def._prevValue[i]) {
+                            def._chart.pushSeries(i, raw);
+                            def._prevValue[i] = raw;
+                        }
+                    });
+
+                    // Inject live colors into the def so _draw() picks them up.
+                    // We store them on def._teamSeries which _draw() reads via
+                    // a small shim added to the def below.
+                    def._teamSeries = teams.map(team => ({
+                        label: (team.playerName || `Team ${team.teamID}`).substring(0, 12),
+                        color: team.color?.hex ?? '#4ab4ff'
+                    }));
+
+                    return;
+                }
+
+                // ── Existing dual-series update (chart-damage etc.) ─────────
                 if (isDual) {
                     cd.series.forEach((s, i) => {
                         const raw = s.getValue();
@@ -740,12 +814,10 @@ for (const cd of CHART_DEFS) {
                         }
                     });
                 } else {
+                    // ── Single-series update ────────────────────────────────
                     const raw = cd.getValue();
-
-                    // K/D returns an object so we can detect changes on the
-                    // underlying integers rather than the derived float
-                    const isObj = raw !== null && typeof raw === 'object';
-                    const pushVal  = isObj ? raw.ratio  : raw;
+                    const isObj     = raw !== null && typeof raw === 'object';
+                    const pushVal   = isObj ? raw.ratio  : raw;
                     const changeKey = isObj ? `${raw.kills}/${raw.losses}` : raw;
                     const resetVal  = isObj ? raw.ratio  : raw;
 
@@ -778,7 +850,17 @@ const chartWidgets = {
             const def = widgetManager.widgets.get(cd.id);
             if (!def?._chart) continue;
             def._chart.clear();
-            def._prevValue = Array.isArray(cd.series) ? [null, null] : null;
+            if (cd.isTeamChart) {
+                // Reset to same length as current buffer; update() will resize
+                // if team count differs when the next game starts.
+                const n = def._chart.seriesCount;
+                def._prevValue = Array(n).fill(null);
+                def._teamSeries = [];
+            } else {
+                def._prevValue = Array.isArray(cd.series)
+                    ? Array(cd.series.length).fill(null)
+                    : null;
+            }
         }
     }
 };
