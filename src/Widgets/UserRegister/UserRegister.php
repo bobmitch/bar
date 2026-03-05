@@ -23,10 +23,10 @@ class UserRegister extends Widget {
         // --- PHASE 1: Handle Email Verification Link ---
         if (isset($_GET['verify_key'])) {
             $key = $_GET['verify_key'];
-            $user = DB::fetchAll("SELECT id FROM users WHERE verification_key = ? AND verification_expires > NOW()", [$key]);
+            $user = DB::fetch("SELECT id FROM users WHERE verification_key = ? AND verification_expires > NOW()", [$key]);
 
             if ($user) {
-                DB::exec("UPDATE users SET state = 1, verification_key = NULL, verification_expires = NULL WHERE id = ?", [$user['id']]);
+                DB::exec("UPDATE users SET state = 1, verification_key = NULL, verification_expires = NULL WHERE id = ?", [$user->id]);
                 CMS::Instance()->queue_message('Account verified! You can now log in.', 'success','/login');
                 $message = "<div class='alert success'>Account verified! You can now log in.</div>";
             } else {
