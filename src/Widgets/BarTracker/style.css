@@ -1283,6 +1283,10 @@ body[data-view="streaming"] {
 #stat-metal-lost .ws-icon, #stat-metal-lost .ws-value { color: #f0c040; }
 #stat-dmg-dealt .ws-value { color: #7fffd4; }
 #stat-dmg-taken .ws-value { color: #ff9060; }
+#stat-build-efficiency .ws-icon, 
+#stat-build-efficiency .ws-value { 
+    color: #f0c040; 
+}
 
 /* ── Disabled hint strip ──────────────────────────────────────────────────── */
 

@@ -154,6 +154,16 @@ const STAT_DEFS = [
             return t ? (t.metalLost || 0) : 0;
         }
     },
+    {
+        id: 'stat-build-efficiency',
+        label: 'BUILD EFFICIENCY',
+        icon: '🛠',
+        defaultX: 30, defaultY: 610, // Adjusted Y to fit below Metal Lost
+        getValue() {
+            const teamID = typeof gameState !== 'undefined' ? gameState.gameState.myTeamID : -1;
+            return typeof gameState !== 'undefined' ? gameState.getBuildEfficiency(teamID) : 0;
+        }
+    },
 ];
 
 for (const s of STAT_DEFS) {
@@ -332,6 +342,25 @@ const CHART_DEFS = [
             if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
             if (n >= 10_000)    return (n / 1_000).toFixed(0) + 'K';
             return Math.round(n).toLocaleString();
+        }
+    },
+
+    // BUILD EFFICIENCY — how much of the player's total build power is currently
+    {
+        id:           'chart-build-efficiency',
+        label:        'BUILD EFFICIENCY',
+        icon:         '🛠',
+        defaultX:     730,
+        defaultY:     250,
+        defaultWidth: 340,
+        defaultHeight:180,
+        color:        '#f0c040', // Gold color for efficiency
+        getValue() {
+            const teamID = typeof gameState !== 'undefined' ? gameState.gameState.myTeamID : -1;
+            return typeof gameState !== 'undefined' ? gameState.getBuildEfficiency(teamID) : 0;
+        },
+        formatY(n) {
+            return Math.round(n) + '%';
         }
     },
 ];

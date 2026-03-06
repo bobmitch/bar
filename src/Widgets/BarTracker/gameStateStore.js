@@ -104,6 +104,7 @@ class GameStateStore {
             color:            options.color      || null,
             unitCount:        0,
             totalMetalCost:   0,
+            totalBuildPower:  0,
             totalDamageDealt: 0,
             totalDamageTaken: 0,
             killedCount:      0,
@@ -168,6 +169,7 @@ class GameStateStore {
             unitName:     unitData.unitName,
             unitTier:     unitData.unitTier || 1,
             metalCost:    unitData.unitMetalCost || 0,
+            buildPower:   unitData.unitBuildSpeed || 0,
             teamID:       unitData.unitTeam,
             relation:     unitData.relation,
 
@@ -197,6 +199,7 @@ class GameStateStore {
             const team = this.teams.get(unit.teamID);
             team.unitCount      += 1;
             team.totalMetalCost += unit.metalCost;
+            team.totalBuildPower += unit.buildPower;
         }
 
         return unit;
@@ -426,6 +429,18 @@ class GameStateStore {
             storage:   s.stats[resource]?.storage || 0,
             excess:    s.stats[resource]?.excess  || 0
         }));
+    }
+
+    getBuildEfficiency(teamID) {
+        const team = this.teams.get(teamID);
+        if (!team || !team.totalBuildPower || team.totalBuildPower <= 0) return 0;
+        
+        // metalStats.usage comes from the 'FullStatsUpdate' event
+        const usage = team.metalStats?.usage || 0;
+        
+        // Efficiency = (Actual Metal Spent / Potential Metal Capacity)
+        // Capped at 100% (Usage can occasionally jitter above BP due to game engine ticks)
+        return Math.min(100, (usage / team.totalBuildPower) * 100);
     }
 
     getResourceStatus(resource = 'metal') {

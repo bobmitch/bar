@@ -236,6 +236,7 @@ class EventHandler {
             unitTeam: data.unitTeam,
             unitTier: data.unitTier || 1,
             unitMetalCost: data.unitMetalCost || 0,
+            unitBuildSpeed: data.unitBuildSpeed || 0,
             relation: data.relation,
             playerName: data.playerName
         });
