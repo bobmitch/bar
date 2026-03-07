@@ -155,13 +155,22 @@ const STAT_DEFS = [
         }
     },
     {
+        // Build efficiency card — shows build-power-to-metal-usage ratio as a
+        // percentage. 100 % = fully supplied; below 100 % = metal-stalling.
+        // Returns 0 when no builders have active orders (Build Power = 0).
         id: 'stat-build-efficiency',
-        label: 'BUILD EFFICIENCY',
-        icon: '🛠',
-        defaultX: 30, defaultY: 610, // Adjusted Y to fit below Metal Lost
+        label: 'BUILD EFF.',
+        icon: '🔧',
+        defaultX: 30, defaultY: 610,
         getValue() {
-            const teamID = typeof gameState !== 'undefined' ? gameState.gameState.myTeamID : -1;
-            return typeof gameState !== 'undefined' ? gameState.getBuildEfficiency(teamID) : 0;
+            const BUILDSPEED_TO_METAL = 15;
+            const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+            if (!t) return 0;
+            const buildPowerMetal = (t.totalBuildSpeed || 0) / BUILDSPEED_TO_METAL;
+            if (buildPowerMetal === 0) return 0;
+            // Metal Used / Build Power × 100 — clamped to [0, 100]
+            const usage = t.metalStats?.usage || 0;
+            return Math.min(100, Math.round((usage / buildPowerMetal) * 100));
         }
     },
 ];
@@ -345,22 +354,52 @@ const CHART_DEFS = [
         }
     },
 
-    // BUILD EFFICIENCY — how much of the player's total build power is currently
+// ── Build Efficiency — Metal Used vs Build Power ────────────────────────
+    // Dual-series chart mirroring bar_native_charts (charts.lua):
+    //
+    //   Series 1 (orange)  "Metal Used"   = t.metalStats.usage
+    //     → actual metal/s consumed by builders right now (m_expense).
+    //       Flattens to income ceiling when metal-stalling.
+    //
+    //   Series 2 (gold)    "Build Power"  = t.totalBuildSpeed / BUILDSPEED_TO_METAL
+    //     → total build speed of all builder units alive, scaled to a metal/s
+    //       equivalent by the same heuristic used in the lua widget (÷ 15).
+    //       This is a *capacity* number — it doesn't change with stalls, only
+    //       with builder count. When it's well above Metal Used, you're stalling.
+    //
+    // BUILDSPEED_TO_METAL = 15  (300 buildspeed ≈ 20 metal/s → ratio 15)
+    // This is an approximation; actual consumption varies with what is being
+    // built. It exists only to put both metrics on the same visual axis.
     {
         id:           'chart-build-efficiency',
         label:        'BUILD EFFICIENCY',
-        icon:         '🛠',
-        defaultX:     730,
-        defaultY:     250,
-        defaultWidth: 340,
+        icon:         '🔧',
+        defaultX:     420,
+        defaultY:     650,
+        defaultWidth: 300,
         defaultHeight:180,
-        color:        '#f0c040', // Gold color for efficiency
-        getValue() {
-            const teamID = typeof gameState !== 'undefined' ? gameState.gameState.myTeamID : -1;
-            return typeof gameState !== 'undefined' ? gameState.getBuildEfficiency(teamID) : 0;
-        },
+        series: [
+            {
+                label: 'METAL USED',
+                color: '#ff6935',
+                getValue() {
+                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+                    return t ? (t.metalStats?.usage || 0) : 0;
+                }
+            },
+            {
+                label: 'BUILD POWER',
+                color: '#f0c040',
+                getValue() {
+                    const BUILDSPEED_TO_METAL = 15;
+                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+                    return t ? ((t.totalBuildSpeed || 0) / BUILDSPEED_TO_METAL) : 0;
+                }
+            }
+        ],
         formatY(n) {
-            return Math.round(n) + '%';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toFixed(1);
         }
     },
 ];

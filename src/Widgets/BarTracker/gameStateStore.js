@@ -104,7 +104,7 @@ class GameStateStore {
             color:            options.color      || null,
             unitCount:        0,
             totalMetalCost:   0,
-            totalBuildPower:  0,
+            totalBuildSpeed:  0,
             totalDamageDealt: 0,
             totalDamageTaken: 0,
             killedCount:      0,
@@ -169,7 +169,7 @@ class GameStateStore {
             unitName:     unitData.unitName,
             unitTier:     unitData.unitTier || 1,
             metalCost:    unitData.unitMetalCost || 0,
-            buildPower:   unitData.unitBuildSpeed || 0,
+            buildSpeed:   unitData.unitBuildSpeed || 0,
             teamID:       unitData.unitTeam,
             relation:     unitData.relation,
 
@@ -199,7 +199,7 @@ class GameStateStore {
             const team = this.teams.get(unit.teamID);
             team.unitCount      += 1;
             team.totalMetalCost += unit.metalCost;
-            team.totalBuildPower += unit.buildPower;
+            team.totalBuildSpeed  += unit.buildSpeed || 0;
         }
 
         return unit;
@@ -222,6 +222,7 @@ class GameStateStore {
             team.totalMetalCost -= unit.metalCost;
             team.lostCount      += 1;
             team.metalLost       = (team.metalLost || 0) + unit.metalCost;
+            team.totalBuildSpeed -= unit.buildSpeed || 0;
         }
 
         // Update attacker unit stats
