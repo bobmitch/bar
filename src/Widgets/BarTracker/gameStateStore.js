@@ -110,6 +110,11 @@ class GameStateStore {
             lostCount:        0,
             metalKilled:      0,
             metalLost:        0,
+            // Cumulative build capacity: sum of buildSpeed for all living builder units.
+            // Incremented by addUnit(), decremented by destroyUnit() using unitBuildSpeed
+            // from UnitFinished / UnitDestroyed events (mirrors charts.lua logic).
+            // Divide by BUILDSPEED_TO_METAL (15) to convert to metal/s equivalent for charts.
+            teamBuildSpeed:   0,
             metalStats:       {},
             energyStats:      {},
             lastUpdate:       Date.now()
@@ -168,6 +173,7 @@ class GameStateStore {
             unitName:     unitData.unitName,
             unitTier:     unitData.unitTier || 1,
             metalCost:    unitData.unitMetalCost || 0,
+            buildSpeed:   unitData.unitBuildSpeed || 0,
             teamID:       unitData.unitTeam,
             relation:     unitData.relation,
 
@@ -197,6 +203,8 @@ class GameStateStore {
             const team = this.teams.get(unit.teamID);
             team.unitCount      += 1;
             team.totalMetalCost += unit.metalCost;
+            // unitBuildSpeed is 0 for combat/structure units; safe to always add
+            team.teamBuildSpeed   += (unit.buildSpeed || 0);
         }
 
         return unit;
@@ -219,6 +227,8 @@ class GameStateStore {
             team.totalMetalCost -= unit.metalCost;
             team.lostCount      += 1;
             team.metalLost       = (team.metalLost || 0) + unit.metalCost;
+            // Clamp to 0 — floating point or ordering edge cases shouldn't go negative
+            team.teamBuildSpeed  = Math.max(0, team.teamBuildSpeed - (unit.buildSpeed || 0));
         }
 
         // Update attacker unit stats

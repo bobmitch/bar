@@ -311,6 +311,60 @@ const CHART_DEFS = [
         }
     },
 
+    // ── Build Efficiency ───────────────────────────────────────────────────────
+    // Dual-series: metal/s actually spent (orange) vs build power equivalent
+    // (gold = totalBuildSpeed / 15).
+    //
+    // Why divide by 15?  buildSpeed is an abstract "work rate" whose units differ
+    // from metal/s.  The BUILDSPEED_TO_METAL heuristic (300 bp ≈ 20 m/s → ratio 15)
+    // scales the two metrics onto roughly the same axis so the chart is readable
+    // for trend comparison — it is NOT a precise conversion.  The subtitle copy
+    // ("BP÷15 ≈ m/s") keeps viewers informed.
+    //
+    // When the gold line is far above the orange line the player has excess build
+    // capacity that is not being fed by metal income (idle builders / eco gap).
+    // When the lines are close, build capacity ≈ metal spend — tight, efficient eco.
+    {
+        id:           'chart-build-efficiency',
+        label:        'BUILD EFFICIENCY',
+        icon:         '🔧',
+        defaultX:     730,
+        defaultY:     250,
+        defaultWidth: 300,
+        defaultHeight:180,
+        series: [
+            {
+                label: 'METAL USE',
+                color: '#ff6b35',       // orange — matches metal-usage colour across charts
+                getValue() {
+                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+                    if (!t) return 0;
+                    // FullStatsUpdate populates metalStats.usage (live m/s expense rate).
+                    // Fall back to 0 while waiting for first update.
+                    return t.metalStats?.usage || 0;
+                }
+            },
+            {
+                label: 'BP÷15 ≈ m/s',
+                color: '#f0c030',       // gold — matches charts.lua COLOR.gold
+                getValue() {
+                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+                    if (!t) return 0;
+                    // teamBuildSpeed is accumulated cumulatively via UnitFinished /
+                    // UnitDestroyed events in gameStateStore.  Divide by the same
+                    // BUILDSPEED_TO_METAL constant used in charts.lua (= 15).
+                    const BUILDSPEED_TO_METAL = 15;
+                    return (t.teamBuildSpeed || 0) / BUILDSPEED_TO_METAL;
+                }
+            }
+        ],
+        formatY(n) {
+            // Both series are in approximate metal/s — keep to 1 decimal for small values
+            if (n >= 10_000) return (n / 1_000).toFixed(1) + 'K';
+            return n.toFixed(1);
+        }
+    },
+
     // ── Team Army Value ────────────────────────────────────────────────────────
     // One line per ally team, colored with the player's in-game color.
     // Series list is built dynamically in update() once AllyColorsUpdate
