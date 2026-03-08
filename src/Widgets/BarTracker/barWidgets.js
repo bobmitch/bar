@@ -334,6 +334,9 @@ const CHART_DEFS = [
         defaultY:     250,
         defaultWidth: 300,
         defaultHeight:180,
+        yMin: 0,
+        yMax: 100,
+        alwaysPush: true,
         color:        '#f0c040',        // gold — matches charts.lua COLOR.gold
 
         getValue() {
@@ -561,13 +564,15 @@ class BARChart {
         }
 
         // Shared Y range across all series
-        let minV       = Math.min(...allPts);
-        let maxV       = Math.max(...allPts);
-        const span     = maxV - minV;
-        const rangePad = span > 0 ? span * 0.12 : Math.max(maxV * 0.1, 100);
-        minV = Math.max(0, minV - rangePad);
-        maxV = maxV + rangePad;
+        let minV       = def.yMin ?? Math.min(...allPts);
+        let maxV       = def.yMax ?? Math.max(...allPts);
         const range    = maxV - minV || 1;
+        if (def.yMin == null || def.yMax == null) {
+            const span     = maxV - minV;
+            const rangePad = span > 0 ? span * 0.12 : Math.max(maxV * 0.1, 100);
+            minV = def.yMin ?? Math.max(0, minV - rangePad);
+            maxV = def.yMax ?? maxV + rangePad;
+        }
 
         // Gridlines + Y labels
         ctx.font         = '9px "Share Tech Mono", monospace';
@@ -916,7 +921,7 @@ for (const cd of CHART_DEFS) {
                         def._prevValue = null;
                         return;
                     }
-                    if (changeKey !== def._prevValue) {
+                    if (cd.alwaysPush || changeKey !== def._prevValue) {
                         def._chart.push(pushVal);
                         def._prevValue = changeKey;
                     }
