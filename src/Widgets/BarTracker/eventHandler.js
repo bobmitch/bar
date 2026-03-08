@@ -182,6 +182,9 @@ class EventHandler {
             case BAR_EVENTS.ALLY_STATES_UPDATE:
                 this.handleAllyStates(data);
                 break;
+            case BAR_EVENTS.ALLY_STATS_UPDATE:
+                this.handleAllyStats(data);
+                break;
             case BAR_EVENTS.ALLY_COLORS_UPDATE:
                 this.handleAllyColors(data);
                 break;
@@ -373,6 +376,22 @@ class EventHandler {
             team.playerName = stats.playerName;
             team.metalStats = stats.metal;
             team.energyStats = stats.energy;
+        }
+    }
+
+    handleAllyStats(data) {
+        if (typeof gameState === 'undefined') return;
+        if (!data.teams || typeof data.teams !== 'object') return;
+
+        for (const [teamIDStr, stats] of Object.entries(data.teams)) {
+            const teamID = parseInt(teamIDStr);
+            const team = gameState.initTeam(teamID, {
+                isMyAlly:   true,
+                playerName: stats.playerName
+            });
+            team.playerName  = stats.playerName;
+            team.metalStats  = stats.metal  || {};
+            team.energyStats = stats.energy || {};
         }
     }
 
