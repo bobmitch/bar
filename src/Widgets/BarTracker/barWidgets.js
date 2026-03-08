@@ -312,18 +312,20 @@ const CHART_DEFS = [
     },
 
     // ── Build Efficiency ───────────────────────────────────────────────────────
-    // Dual-series: metal/s actually spent (orange) vs build power equivalent
-    // (gold = totalBuildSpeed / 15).
+    // Single-series percentage chart fed by meta.builderEfficiency from
+    // FullStatsUpdate (computed in killbridge.lua, stored in gameStateStore).
     //
-    // Why divide by 15?  buildSpeed is an abstract "work rate" whose units differ
-    // from metal/s.  The BUILDSPEED_TO_METAL heuristic (300 bp ≈ 20 m/s → ratio 15)
-    // scales the two metrics onto roughly the same axis so the chart is readable
-    // for trend comparison — it is NOT a precise conversion.  The subtitle copy
-    // ("BP÷15 ≈ m/s") keeps viewers informed.
+    // 100% = every active builder is drawing metal at theoretical maximum rate.
+    // <100% = builders are eco-starved or the engine is throttling their metal pull.
+    // Idle builders (no assigned target) are excluded from the calculation, so
+    // 100% when no one is building simply means "nothing to measure".
     //
-    // When the gold line is far above the orange line the player has excess build
-    // capacity that is not being fed by metal income (idle builders / eco gap).
-    // When the lines are close, build capacity ≈ metal spend — tight, efficient eco.
+    // A stall badge is overlaid on the chart by BARChart._draw() via the optional
+    // def.drawOverlay(ctx, W, H, PAD) hook — called at the very end of each draw.
+    // Badge colour codes:
+    //   🟠  orange  = metal stall   (metal pull  > metal income  × 1.10)
+    //   🟡  gold    = energy stall  (energy pull > energy income × 1.10)
+    //   🔴  red     = both stalling simultaneously
     {
         id:           'chart-build-efficiency',
         label:        'BUILD EFFICIENCY',
@@ -332,36 +334,65 @@ const CHART_DEFS = [
         defaultY:     250,
         defaultWidth: 300,
         defaultHeight:180,
-        series: [
-            {
-                label: 'METAL USE',
-                color: '#ff6b35',       // orange — matches metal-usage colour across charts
-                getValue() {
-                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
-                    if (!t) return 0;
-                    // FullStatsUpdate populates metalStats.usage (live m/s expense rate).
-                    // Fall back to 0 while waiting for first update.
-                    return t.metalStats?.usage || 0;
-                }
-            },
-            {
-                label: 'BP÷15 ≈ m/s',
-                color: '#f0c030',       // gold — matches charts.lua COLOR.gold
-                getValue() {
-                    const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
-                    if (!t) return 0;
-                    // teamBuildSpeed is accumulated cumulatively via UnitFinished /
-                    // UnitDestroyed events in gameStateStore.  Divide by the same
-                    // BUILDSPEED_TO_METAL constant used in charts.lua (= 15).
-                    const BUILDSPEED_TO_METAL = 15;
-                    return (t.teamBuildSpeed || 0) / BUILDSPEED_TO_METAL;
-                }
-            }
-        ],
+        color:        '#f0c040',        // gold — matches charts.lua COLOR.gold
+
+        getValue() {
+            const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+            if (!t) return 0;
+            // builderEfficiency stored by gameStateStore.updateTeamStats() from meta.
+            // Default 100 until first FullStatsUpdate arrives.
+            return t.builderEfficiency ?? 100;
+        },
+
         formatY(n) {
-            // Both series are in approximate metal/s — keep to 1 decimal for small values
-            if (n >= 10_000) return (n / 1_000).toFixed(1) + 'K';
-            return n.toFixed(1);
+            return Math.min(100, Math.max(0, n)).toFixed(1) + '%';
+        },
+
+        // drawOverlay is an optional hook called by BARChart._draw() at the very end,
+        // after all chart content has been rendered.  This keeps the badge persistent
+        // across RAF animation frames without needing a separate overlay canvas.
+        drawOverlay(ctx, W, H, PAD) {
+            const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+            if (!t) return;
+
+            const stall = t.stallState || 0;
+            if (stall === 0) return;
+
+            // Per-state badge config
+            const cfg = {
+                1: { label: '\u25A0 METAL STALL',  bg: 'rgba(255,107,53,0.25)',  border: '#ff6b35', text: '#ff9060' },
+                2: { label: '\u26A1 ENERGY STALL', bg: 'rgba(240,192,64,0.22)',  border: '#f0c040', text: '#f0d060' },
+                3: { label: '\u26A0 ECO STALL',    bg: 'rgba(255,59,92,0.25)',   border: '#ff3b5c', text: '#ff6080' },
+            }[stall];
+
+            const BADGE_PAD = 5;
+            const BADGE_H   = 15;
+            ctx.save();
+            ctx.font = `bold 8px "Share Tech Mono", monospace`;
+            const tw   = ctx.measureText(cfg.label).width;
+            const bw   = tw + BADGE_PAD * 2 + 1;
+            // Position: top-right, inside the chart area header strip
+            const bx   = W - bw - PAD.right - 2;
+            const by   = H - BADGE_H - 4;
+
+            // Background pill
+            ctx.fillStyle   = cfg.bg;
+            ctx.strokeStyle = cfg.border;
+            ctx.lineWidth   = 1;
+            if (ctx.roundRect) {
+                ctx.beginPath(); ctx.roundRect(bx, by, bw, BADGE_H, 3);
+                ctx.fill(); ctx.stroke();
+            } else {
+                ctx.fillRect(bx, by, bw, BADGE_H);
+                ctx.strokeRect(bx, by, bw, BADGE_H);
+            }
+
+            // Label
+            ctx.fillStyle    = cfg.text;
+            ctx.textAlign    = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(cfg.label, bx + BADGE_PAD, by + BADGE_H / 2);
+            ctx.restore();
         }
     },
 
@@ -628,6 +659,11 @@ class BARChart {
         });
 
         this._drawHeader(ctx, W, H);
+
+        // Optional per-chart overlay hook (e.g. stall badge on efficiency chart)
+        if (typeof this.def.drawOverlay === 'function') {
+            this.def.drawOverlay(ctx, W, H, PAD);
+        }
     }
 
     _drawHeader(ctx, W, H) {

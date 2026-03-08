@@ -104,6 +104,7 @@ class GameStateStore {
             color:            options.color      || null,
             unitCount:        0,
             totalMetalCost:   0,
+            builderEfficiency:   100,
             totalDamageDealt: 0,
             totalDamageTaken: 0,
             killedCount:      0,
@@ -396,33 +397,57 @@ class GameStateStore {
      */
     updateTeamStats(teamID, stats) {
         const team = this.teams.get(teamID);
-        if (team) {
-            team.metalStats  = stats.metal  || {};
-            team.energyStats = stats.energy || {};
-            team.lastUpdate  = Date.now();
+        if (!team) return;
 
-            // FullStatsUpdate is the authoritative cumulative source for combat stats.
-            // UnitDamaged events don't include attackerTeam so team.totalDamageDealt
-            // can never be incremented via damageUnit() — this is the correct path.
-            if (stats.combat) {
-                const c = stats.combat;
-                if (c.damage_dealt    != null) team.totalDamageDealt = c.damage_dealt;
-                if (c.damage_received != null) team.totalDamageTaken = c.damage_received;
-                if (c.units_killed    != null) team.killedCount       = c.units_killed;
-                if (c.units_died      != null) team.lostCount         = c.units_died;
-            }
+        team.metalStats  = stats.metal  || {};
+        team.energyStats = stats.energy || {};
+        team.lastUpdate  = Date.now();
 
-            // Fix #5: bounded push
-            if (this.statsHistory.length >= STATS_HISTORY_MAX) {
-                this.statsHistory.shift();
-            }
-            this.statsHistory.push({
-                timestamp: Date.now(),
-                frame:     this.gameState.frame,
-                teamID,
-                stats:     { ...stats }
-            });
+        // ── meta: builder efficiency % ────────────────────────────────────────
+        // Sent as data.meta.builderEfficiency from FullStatsUpdate (killbridge.lua).
+        // 100 = all active builders at full speed (or no builders / all idle).
+        // Values below 100 indicate eco starvation or partially-fed build queues.
+        if (stats.meta?.builderEfficiency != null) {
+            team.builderEfficiency = stats.meta.builderEfficiency;
         }
+
+        // ── Stall detection ───────────────────────────────────────────────────
+        // Flag when pull > income by more than 10% on either resource.
+        // stallState is a bitmask: bit 0 = metal, bit 1 = energy.
+        //   0 = healthy
+        //   1 = metal stall   (metal pull  > metal income  × 1.10)
+        //   2 = energy stall  (energy pull > energy income × 1.10)
+        //   3 = both stalling simultaneously
+        {
+            const m = team.metalStats;
+            const e = team.energyStats;
+            const metalStall  = m && (m.pull  ?? 0) > 0 && (m.income  ?? 0) > 0
+                             && m.pull  > m.income  * 1.10;
+            const energyStall = e && (e.pull  ?? 0) > 0 && (e.income  ?? 0) > 0
+                             && e.pull  > e.income  * 1.10;
+            team.stallState = (metalStall  ? 1 : 0)
+                            | (energyStall ? 2 : 0);
+        }
+
+        // ── Combat totals (authoritative from FullStatsUpdate) ────────────────
+        if (stats.combat) {
+            const c = stats.combat;
+            if (c.damage_dealt    != null) team.totalDamageDealt = c.damage_dealt;
+            if (c.damage_received != null) team.totalDamageTaken = c.damage_received;
+            if (c.units_killed    != null) team.killedCount       = c.units_killed;
+            if (c.units_died      != null) team.lostCount         = c.units_died;
+        }
+
+        // ── Bounded statsHistory push ─────────────────────────────────────────
+        if (this.statsHistory.length >= STATS_HISTORY_MAX) {
+            this.statsHistory.shift();
+        }
+        this.statsHistory.push({
+            timestamp: Date.now(),
+            frame:     this.gameState.frame,
+            teamID,
+            stats:     { ...stats }
+        });
     }
 
     getResourceTrend(teamID, seconds = 60, resource = 'metal') {
