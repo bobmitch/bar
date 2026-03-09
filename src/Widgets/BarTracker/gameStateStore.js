@@ -407,8 +407,8 @@ class GameStateStore {
         // Sent as data.meta.builderEfficiency from FullStatsUpdate (killbridge.lua).
         // 100 = all active builders at full speed (or no builders / all idle).
         // Values below 100 indicate eco starvation or partially-fed build queues.
-        if (stats.meta?.builderEfficiency != null) {
-            team.builderEfficiency = stats.meta.builderEfficiency;
+        if (stats.metal?.builderEfficiency != null) {
+            team.builderEfficiency = stats.metal.builderEfficiency;
         }
 
         // ── Stall detection ───────────────────────────────────────────────────

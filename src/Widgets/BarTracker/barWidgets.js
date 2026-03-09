@@ -312,7 +312,7 @@ const CHART_DEFS = [
     },
 
     // ── Build Efficiency ───────────────────────────────────────────────────────
-    // Single-series percentage chart fed by meta.builderEfficiency from
+    // Single-series percentage chart fed by metal.builderEfficiency from
     // FullStatsUpdate (computed in killbridge.lua, stored in gameStateStore).
     //
     // 100% = every active builder is drawing metal at theoretical maximum rate.
