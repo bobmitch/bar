@@ -410,11 +410,15 @@ class EventHandler {
         for (const [teamIDStr, colorData] of Object.entries(data.colors)) {
             const teamID = parseInt(teamIDStr);
             const team   = gameState.initTeam(teamID, { isMyAlly: true });
+            // Lua sends r/g/b as floats (0–1). Derive hex here since it's not sent.
+            const toHex = (f) => Math.round((f ?? 0) * 255).toString(16).padStart(2, '0');
+            const hex = colorData.hex
+                ?? `#${toHex(colorData.r)}${toHex(colorData.g)}${toHex(colorData.b)}`;
             team.color   = {
                 r:   colorData.r,
                 g:   colorData.g,
                 b:   colorData.b,
-                hex: colorData.hex
+                hex
             };
             // Keep playerName in sync if Lua sent it
             if (colorData.playerName) team.playerName = colorData.playerName;
