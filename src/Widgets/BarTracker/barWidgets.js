@@ -814,7 +814,7 @@ for (const cd of CHART_DEFS) {
                 // For team charts, patch def.series so _draw()'s seriesList
                 // builder reads from def._teamSeries (populated by update()).
                 // We do this by making def.series a live getter.
-                if (cd.isTeamChart) {
+                if (cd.isTeamChart || cd.isTeamBuildChart) {
                     Object.defineProperty(chart.def, 'series', {
                         get() { return def._teamSeries ?? []; },
                         configurable: true
