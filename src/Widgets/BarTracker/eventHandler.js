@@ -234,19 +234,21 @@ class EventHandler {
         if (typeof gameState === 'undefined') return;
         
         gameState.addUnit(data.unitID, {
-            unitDefID: data.unitDefID,
-            unitName: data.unitName,
-            unitTeam: data.unitTeam,
-            unitTier: data.unitTier || 1,
+            unitDefID:     data.unitDefID,
+            unitName:      data.unitName,
+            unitTeam:      data.unitTeam,
+            unitTier:      data.unitTier || 1,
             unitMetalCost: data.unitMetalCost || 0,
-            relation: data.relation,
-            playerName: data.playerName
+            unitBuildSpeed: data.unitBuildSpeed || 0,   // ← ADDED: was always 0 before
+            relation:      data.relation,
+            playerName:    data.playerName
         });
-
+ 
         console.log('✅ Unit finished:', {
-            unitName: data.unitName,
-            unitID: data.unitID,
-            relation: data.relation
+            unitName:      data.unitName,
+            unitID:        data.unitID,
+            relation:      data.relation,
+            unitBuildSpeed: data.unitBuildSpeed || 0    // ← log it so it's verifiable
         });
     }
 

@@ -25,6 +25,7 @@ const TRIGGER_MAX_STACK  = 8;
 // image widget timing (also used in CSS, keep in sync)
 const IMAGE_DISPLAY_MS    = 4000;   // how long the image stays visible
 const IMAGE_FADE_MS       = 300;    // CSS transition duration (keep in sync with CSS)
+const BUILDSPEED_TO_METAL = 15; // matches gameStateStore — divides raw buildSpeed to metal/s
 
 widgetManager.register({
     id: 'trigger-feed',
@@ -419,6 +420,54 @@ const CHART_DEFS = [
         formatY(n) {
             if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
             if (n >= 10_000)    return (n / 1_000).toFixed(0) + 'K';
+            return Math.round(n).toLocaleString();
+        }
+    },
+
+    // ── Build Power (Solo) ─────────────────────────────────────────────────────
+    // Single-series chart for the local player's cumulative build power.
+    // teamBuildSpeed is the raw sum of buildSpeed across all living builder units
+    // (incremented by addUnit, decremented by destroyUnit in gameStateStore).
+    // Divided by BUILDSPEED_TO_METAL (15) to give metal/s equivalent — matching
+    // the scale documented in gameStateStore and used by charts.lua.
+    {
+        id:             'chart-build-speed',
+        label:          'BUILD POWER',
+        icon:           '🏗',
+        defaultX:       730,
+        defaultY:       260,
+        defaultWidth:   300,
+        defaultHeight:  180,
+        defaultEnabled: true,
+        color:          '#a0e080',   // lime-green — distinct from gold efficiency chart
+        getValue() {
+            const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
+            return t ? Math.round((t.teamBuildSpeed || 0) / BUILDSPEED_TO_METAL) : 0;
+        },
+        formatY(n) {
+            if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+            return Math.round(n).toLocaleString();
+        }
+    },
+ 
+    // ── Team Build Power ───────────────────────────────────────────────────────
+    // Multi-series chart: one line per ally team (including your own), each
+    // colored with that player's in-game team color — same as TEAM ARMY VALUE.
+    // Uses isTeamBuildChart (not isTeamChart) so it gets its own dedicated
+    // update branch and the existing army value block is completely untouched.
+    {
+        id:               'chart-team-build-speed',
+        label:            'TEAM BUILD POWER',
+        icon:             '🏗',
+        defaultX:         730,
+        defaultY:         470,
+        defaultWidth:     340,
+        defaultHeight:    200,
+        defaultEnabled:   false,        // pair with chart-team-army-value for streamer view
+        isTeamBuildChart: true,         // distinct flag — isTeamChart block not affected
+        seriesCount:      4,
+        formatY(n) {
+            if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
             return Math.round(n).toLocaleString();
         }
     },
@@ -891,6 +940,41 @@ for (const cd of CHART_DEFS) {
                         color: team.color?.hex ?? '#4ab4ff'
                     }));
 
+                    return;
+                }
+
+                // ── Team build power: N-series dynamic update ──────────────
+                if (cd.isTeamBuildChart) {
+                    if (typeof gameState === 'undefined') return;
+ 
+                    const teams = [];
+                    for (const [, team] of gameState.teams) {
+                        if (team.isMyAlly) teams.push(team);
+                    }
+                    if (!teams.length) return;
+ 
+                    // Rebuild series buffers if team count changed
+                    if (teams.length !== def._chart.seriesCount) {
+                        def._chart.seriesCount = teams.length;
+                        def._chart.clear();
+                        def._prevValue = Array(teams.length).fill(null);
+                    }
+ 
+                    // Push each team's current build power (metal/s equivalent)
+                    teams.forEach((team, i) => {
+                        const raw = Math.round((team.teamBuildSpeed || 0) / BUILDSPEED_TO_METAL);
+                        if (raw !== def._prevValue[i]) {
+                            def._chart.pushSeries(i, raw);
+                            def._prevValue[i] = raw;
+                        }
+                    });
+ 
+                    // Inject live player colors — identical pattern to army value chart
+                    def._teamSeries = teams.map(team => ({
+                        label: (team.playerName || `Team ${team.teamID}`).substring(0, 12),
+                        color: team.color?.hex ?? '#a0e080'
+                    }));
+ 
                     return;
                 }
 
