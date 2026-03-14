@@ -205,7 +205,7 @@ for (const s of STAT_DEFS) {
 
 // ── Chart Widgets ─────────────────────────────────────────────────────────────
 // Native Canvas 2D line chart — no external libraries.
-// Smooth animation between data updates via RAF lerp.
+// New data points scroll in from the right via a canvas-translate animation.
 // Each chart widget is independently draggable / scalable / toggleable
 // through the standard WidgetManager interface.
 //
@@ -479,6 +479,12 @@ const CHART_DEFS = [
  * BARChart — lightweight native-canvas line chart.
  * Supports 1 or 2 series.
  *
+ * Animation strategy: scroll
+ *   When a new data point is pushed, displayData immediately mirrors data (no
+ *   value morphing). The chart area is translated right by one point-width and
+ *   that offset eases back to zero over SCROLL_DUR_MS, producing a natural
+ *   "new point slides in from the right" effect.
+ *
  * Lifecycle:
  *   new BARChart(canvas, def)
  *   .push(value)           — single-series: add a data point
@@ -499,15 +505,17 @@ class BARChart {
         const N = def.seriesCount ?? (this.isDual ? def.series.length : 1);
         this.seriesCount = N;
 
-        this.MAX_POINTS  = 60;
-        this.data        = Array.from({ length: N }, () => []);
-        this.displayData = Array.from({ length: N }, () => []);
+        this.MAX_POINTS    = 60;
+        this.data          = Array.from({ length: N }, () => []);
+        this.displayData   = Array.from({ length: N }, () => []);
 
-        this._animFrom   = Array(N).fill(null);
-        this._animTo     = Array(N).fill(null);
-        this._animT      = 1;
-        this.ANIM_DUR_MS = 380;
-        this._animStart  = 0;
+        // ── Scroll animation state ────────────────────────────────────────────
+        // _scrollOffset is a pixel amount added to the right of the plotted line
+        // and eased back to zero, giving a "slide in" effect on each new point.
+        this._scrollOffset = 0;      // current pixel offset (0 = settled)
+        this._scrollFrom   = 0;      // offset at animation start
+        this._scrollStart  = 0;      // performance.now() timestamp
+        this.SCROLL_DUR_MS = 220;    // total slide duration in ms
 
         this.PAD = { top: 10, right: 10, bottom: 26, left: 48 };
 
@@ -521,13 +529,16 @@ class BARChart {
         this.data[i].push(value);
         if (this.data[i].length > this.MAX_POINTS) this.data[i].shift();
 
-        // Re-snapshot all series so animation fires together
+        // displayData always mirrors data directly — no value morphing.
+        // All series are synced together so the scroll fires once per update.
         for (let s = 0; s < this.data.length; s++) {
-            this._animFrom[s] = [...this.displayData[s]];
-            this._animTo[s]   = [...this.data[s]];
+            this.displayData[s] = [...this.data[s]];
         }
-        this._animT     = 0;
-        this._animStart = performance.now();
+
+        // Kick off a new scroll animation from the current offset (handles
+        // rapid pushes gracefully by continuing from wherever we are).
+        this._scrollFrom  = this._scrollOffset;
+        this._scrollStart = performance.now();
     }
 
     resize(w, h) {
@@ -541,11 +552,11 @@ class BARChart {
 
     clear() {
         const N = this.seriesCount;
-        this.data        = Array.from({ length: N }, () => []);
-        this.displayData = Array.from({ length: N }, () => []);
-        this._animFrom   = Array(N).fill(null);
-        this._animTo     = Array(N).fill(null);
-        this._animT      = 1;
+        this.data          = Array.from({ length: N }, () => []);
+        this.displayData   = Array.from({ length: N }, () => []);
+        this._scrollOffset = 0;
+        this._scrollFrom   = 0;
+        this._scrollStart  = 0;
     }
 
     destroy() {
@@ -558,25 +569,21 @@ class BARChart {
     _loop(ts) {
         if (!this._raf) return;
 
-        if (this._animT < 1) {
-            const elapsed = ts - this._animStart;
-            this._animT   = Math.min(1, elapsed / this.ANIM_DUR_MS);
-            const ease    = this._easeOutCubic(this._animT);
-
-            for (let s = 0; s < this.data.length; s++) {
-                if (!this._animTo[s]) continue;
-                this.displayData[s] = this._animTo[s].map((toVal, i) => {
-                    const fromVal = this._animFrom[s]?.[i] ?? toVal;
-                    return fromVal + (toVal - fromVal) * ease;
-                });
+        if (this._scrollFrom > 0 || this._scrollOffset > 0) {
+            const elapsed = ts - this._scrollStart;
+            const t       = Math.min(1, elapsed / this.SCROLL_DUR_MS);
+            // easeOutQuart — snappy start, soft landing
+            const ease    = 1 - Math.pow(1 - t, 4);
+            this._scrollOffset = this._scrollFrom * (1 - ease);
+            if (t >= 1) {
+                this._scrollOffset = 0;
+                this._scrollFrom   = 0;
             }
         }
 
         this._draw();
         this._raf = requestAnimationFrame(this._loop);
     }
-
-    _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
     // ── Drawing ───────────────────────────────────────────────────────────────
 
@@ -623,7 +630,7 @@ class BARChart {
             maxV = def.yMax ?? maxV + rangePad;
         }
 
-        // Gridlines + Y labels
+        // Gridlines + Y labels (drawn outside clip so labels stay visible)
         ctx.font         = '9px "Share Tech Mono", monospace';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'middle';
@@ -648,6 +655,17 @@ class BARChart {
         const seriesList = this.isDual
             ? def.series.map((s, i) => ({ pts: this.displayData[i], color: s.color, label: s.label }))
             : [{ pts: this.displayData[0], color: def.color, label: def.label }];
+
+        // ── Scroll clip + translate ───────────────────────────────────────────
+        // Clip to the chart plot area so the sliding line doesn't bleed into
+        // the Y-axis labels or outside the widget border.
+        // Then translate right by _scrollOffset so the newest point starts
+        // off-screen-right and glides into position as the offset eases to 0.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(cX, cY, cW, cH);
+        ctx.clip();
+        ctx.translate(this._scrollOffset, 0);
 
         for (const { pts, color } of seriesList) {
             if (pts.length < 2) continue;
@@ -697,7 +715,10 @@ class BARChart {
             ctx.shadowBlur  = 0;
         }
 
-        // Latest value labels — works for 1, 2, or N series
+        ctx.restore(); // removes clip and scroll translate
+
+        // Latest value labels — drawn after restore so they sit at true position
+        // and are never clipped by the chart area rect.
         ctx.font         = '10px "Rajdhani", sans-serif';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
@@ -780,10 +801,12 @@ for (const cd of CHART_DEFS) {
             defaultX:       cd.defaultX,
             defaultY:       cd.defaultY,
             defaultScale:   1.0,
-            defaultEnabled: true,
+            defaultEnabled: cd.defaultEnabled ?? true,
             _chart:         null,
             _observer:      null,
-            _prevValue:     isDual ? [null, null] : null,
+            _prevValue:     isDual
+                ? Array(cd.series?.length ?? 2).fill(null)
+                : [null, null],
 
             render(def, inner) {
                 inner.innerHTML = `
@@ -837,69 +860,83 @@ for (const cd of CHART_DEFS) {
                 // widgetManager sets fontSize on the .wm-widget element when the
                 // user scrolls to scale. We watch for that and resize the frame
                 // proportionally so the chart scales like every other widget.
+                const scaleObs = new MutationObserver(() => {
+                    const el    = inner.closest('.wm-widget');
+                    const scale = parseFloat(el?.style.fontSize) || 1.0;
+                    const base  = saved.chartW || cd.defaultWidth;
+                    const baseH = saved.chartH || cd.defaultHeight;
+                    frame.style.width  = (base  * scale) + 'px';
+                    frame.style.height = (baseH * scale) + 'px';
+                });
                 if (widgetEl) {
-                    const scaleObserver = new MutationObserver(() => {
-                        const fs = parseFloat(widgetEl.style.fontSize) || 1.0;
-                        frame.style.width  = (initW * fs) + 'px';
-                        frame.style.height = (initH * fs) + 'px';
-                        // ResizeObserver handles the canvas resize automatically
-                    });
-                    scaleObserver.observe(widgetEl, { attributes: true, attributeFilter: ['style'] });
-                    // Store so chartWidgets.reset() can disconnect if needed
-                    def._scaleObserver = scaleObserver;
+                    scaleObs.observe(widgetEl, { attributes: true, attributeFilter: ['style'] });
                 }
+                def._scaleObserver = scaleObs;
 
-                // ── Resize handle (mouse + touch) ─────────────────────────────
-                let resizing = false, resX, resY, resW, resH;
+                // ── Resize handle ─────────────────────────────────────────────
+                let resizing = false, resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
 
-                const startResize = (cx, cy) => {
-                    resizing = true;
-                    resX = cx; resY = cy;
-                    resW = frame.offsetWidth; resH = frame.offsetHeight;
-                };
-                const doResize = (cx, cy) => {
-                    if (!resizing) return;
-                    frame.style.width  = Math.max(140, resW + (cx - resX)) + 'px';
-                    frame.style.height = Math.max(90,  resH + (cy - resY)) + 'px';
-                };
-                const endResize = () => {
-                    if (!resizing) return;
-                    resizing = false;
-                    document.body.style.cursor = '';
-                    const wm2 = window.widgetManager;
-                    if (wm2) {
-                        const inst = wm2.instances.get(cd.id);
-                        if (inst) {
-                            // Save base dimensions at scale 1.0 so MutationObserver
-                            // math stays correct across sessions
-                            const fs = parseFloat(widgetEl?.style.fontSize) || 1.0;
-                            inst.state.chartW = frame.offsetWidth  / fs;
-                            inst.state.chartH = frame.offsetHeight / fs;
-                            initW = inst.state.chartW;
-                            initH = inst.state.chartH;
-                            wm2._saveLayout();
-                        }
+                const doResize = (clientX, clientY) => {
+                    const el    = inner.closest('.wm-widget');
+                    const scale = parseFloat(el?.style.fontSize) || 1.0;
+                    const dW    = clientX - resizeStartX;
+                    const dH    = clientY - resizeStartY;
+                    const newW  = Math.max(150, resizeStartW + dW / scale);
+                    const newH  = Math.max(100, resizeStartH + dH / scale);
+                    frame.style.width  = (newW * scale) + 'px';
+                    frame.style.height = (newH * scale) + 'px';
+                    chart.resize(newW * scale, newH * scale);
+                    saved.chartW = newW;
+                    saved.chartH = newH;
+                    if (wm?.layout) {
+                        wm.layout[cd.id] = wm.layout[cd.id] || {};
+                        wm.layout[cd.id].chartW = newW;
+                        wm.layout[cd.id].chartH = newH;
+                        wm.saveLayout?.();
                     }
                 };
 
-                handle.addEventListener('mousedown', (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    document.body.style.cursor = 'nwse-resize';
-                    startResize(e.clientX, e.clientY);
-                });
-                document.addEventListener('mousemove',  (e) => doResize(e.clientX, e.clientY));
-                document.addEventListener('mouseup',    endResize);
+                const endResize = () => {
+                    resizing = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup',   endResize);
+                };
+                const onMouseMove = (e) => { if (resizing) doResize(e.clientX, e.clientY); };
 
+                handle.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    resizing    = true;
+                    resizeStartX = e.clientX;
+                    resizeStartY = e.clientY;
+                    resizeStartW = parseFloat(frame.style.width)  || initW;
+                    resizeStartH = parseFloat(frame.style.height) || initH;
+                    const el    = inner.closest('.wm-widget');
+                    const scale = parseFloat(el?.style.fontSize) || 1.0;
+                    resizeStartW /= scale;
+                    resizeStartH /= scale;
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup',   endResize);
+                });
+
+                // Touch resize
                 handle.addEventListener('touchstart', (e) => {
-                    if (e.touches.length !== 1) return;
-                    e.preventDefault(); e.stopPropagation();
-                    startResize(e.touches[0].clientX, e.touches[0].clientY);
+                    e.stopPropagation();
+                    e.preventDefault();
+                    resizing    = true;
+                    resizeStartX = e.touches[0].clientX;
+                    resizeStartY = e.touches[0].clientY;
+                    resizeStartW = parseFloat(frame.style.width)  || initW;
+                    resizeStartH = parseFloat(frame.style.height) || initH;
+                    const el    = inner.closest('.wm-widget');
+                    const scale = parseFloat(el?.style.fontSize) || 1.0;
+                    resizeStartW /= scale;
+                    resizeStartH /= scale;
+                    document.addEventListener('touchmove', (e) => {
+                        if (resizing) doResize(e.touches[0].clientX, e.touches[0].clientY);
+                    }, { passive: false });
+                    document.addEventListener('touchend', endResize);
                 }, { passive: false });
-                document.addEventListener('touchmove', (e) => {
-                    if (!resizing || !e.touches.length) return;
-                    doResize(e.touches[0].clientX, e.touches[0].clientY);
-                }, { passive: false });
-                document.addEventListener('touchend', endResize);
             },
 
             update(def, inner) {
@@ -1013,8 +1050,9 @@ for (const cd of CHART_DEFS) {
             },
 
             destroy(def) {
-                if (def._observer) { def._observer.disconnect(); def._observer = null; }
-                if (def._chart)    { def._chart.destroy();       def._chart    = null; }
+                if (def._observer)      { def._observer.disconnect();      def._observer      = null; }
+                if (def._scaleObserver) { def._scaleObserver.disconnect(); def._scaleObserver = null; }
+                if (def._chart)         { def._chart.destroy();            def._chart         = null; }
             }
         });
     })(cd);
