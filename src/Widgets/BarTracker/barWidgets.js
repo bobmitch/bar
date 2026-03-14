@@ -622,13 +622,16 @@ class BARChart {
         // Shared Y range across all series
         let minV       = def.yMin ?? Math.min(...allPts);
         let maxV       = def.yMax ?? Math.max(...allPts);
-        const range    = maxV - minV || 1;
+        
         if (def.yMin == null || def.yMax == null) {
             const span     = maxV - minV;
             const rangePad = span > 0 ? span * 0.12 : Math.max(maxV * 0.1, 100);
             minV = def.yMin ?? Math.max(0, minV - rangePad);
             maxV = def.yMax ?? maxV + rangePad;
         }
+        
+        // calc range after padding so the gridlines and value labels reflect the actual chart scale, not just the data range
+        const range    = maxV - minV || 1;
 
         // Gridlines + Y labels (drawn outside clip so labels stay visible)
         ctx.font         = '9px "Share Tech Mono", monospace';
