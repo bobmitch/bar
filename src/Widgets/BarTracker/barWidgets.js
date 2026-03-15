@@ -337,15 +337,15 @@ const CHART_DEFS = [
         defaultHeight:180,
         yMin: 0,
         yMax: 100,
-        alwaysPush: true,
         color:        '#f0c040',        // gold — matches charts.lua COLOR.gold
 
         getValue() {
             const t = typeof gameState !== 'undefined' ? gameState.getMyTeam() : null;
-            if (!t) return 0;
-            // builderEfficiency stored by gameStateStore.updateTeamStats() from meta.
-            // Default 100 until first FullStatsUpdate arrives.
-            return t.builderEfficiency ?? 100;
+            if (!t) return { ratio: 0, changeKey: '0' };
+            return {
+                ratio:     t.builderEfficiency ?? 100,
+                changeKey: String(t.efficiencyVersion ?? 0)
+            };
         },
 
         formatY(n) {
@@ -629,7 +629,7 @@ class BARChart {
             minV = def.yMin ?? Math.max(0, minV - rangePad);
             maxV = def.yMax ?? maxV + rangePad;
         }
-        
+
         // calc range after padding so the gridlines and value labels reflect the actual chart scale, not just the data range
         const range    = maxV - minV || 1;
 
@@ -1037,7 +1037,9 @@ for (const cd of CHART_DEFS) {
                     const raw = cd.getValue();
                     const isObj     = raw !== null && typeof raw === 'object';
                     const pushVal   = isObj ? raw.ratio  : raw;
-                    const changeKey = isObj ? `${raw.kills}/${raw.losses}` : raw;
+                    const changeKey = isObj
+                        ? (raw.changeKey ?? `${raw.kills}/${raw.losses}`)
+                        : raw;
                     const resetVal  = isObj ? raw.ratio  : raw;
 
                     if (resetVal === 0 && def._prevValue !== null) {

@@ -118,6 +118,7 @@ class GameStateStore {
             teamBuildSpeed:   0,
             metalStats:       {},
             energyStats:      {},
+            efficiencyVersion:   0,
             lastUpdate:       Date.now()
         };
 
@@ -409,6 +410,7 @@ class GameStateStore {
         // Values below 100 indicate eco starvation or partially-fed build queues.
         if (stats.metal?.builderEfficiency != null) {
             team.builderEfficiency = stats.metal.builderEfficiency;
+            team.efficiencyVersion = (team.efficiencyVersion || 0) + 1; 
         }
 
         // ── Stall detection ───────────────────────────────────────────────────
