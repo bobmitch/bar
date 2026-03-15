@@ -890,7 +890,7 @@ body[data-view="streaming"] {
     gap: 0.75rem;
     background: rgba(4, 8, 18, 0.82);
     border-bottom: 1px solid rgba(0, 180, 255, 0.15);
-    backdrop-filter: blur(6px);
+    /* backdrop-filter: blur(6px); */
     z-index: 50;
     pointer-events: none;   /* hidden by default — JS adds .wm-hud-visible */
     font-family: 'Courier New', monospace;
@@ -1153,7 +1153,7 @@ body[data-view="streaming"] {
     border: 1px solid rgba(0, 180, 255, 0.28);
     border-left: 3px solid var(--accent-primary, #00d9ff);
     border-radius: 3px;
-    backdrop-filter: blur(10px);
+    /* backdrop-filter: blur(10px); */
     box-shadow:
         0 0 14px rgba(0, 180, 255, 0.18),
         inset 0 1px 0 rgba(255,255,255,0.03);
@@ -1222,7 +1222,7 @@ body[data-view="streaming"] {
     background: rgba(4, 10, 24, 0.80);
     border: 1px solid rgba(0, 180, 255, 0.18);
     border-radius: 3px;
-    backdrop-filter: blur(8px);
+    /* backdrop-filter: blur(8px); */
     box-shadow:
         0 0 12px rgba(0, 180, 255, 0.12),
         inset 0 1px 0 rgba(255,255,255,0.02);
@@ -1317,7 +1317,7 @@ body[data-view="streaming"] {
     letter-spacing: 0.08em;
     padding: 0.4rem 0.8rem;
     border-radius: 3px;
-    backdrop-filter: blur(6px);
+    /* backdrop-filter: blur(6px); */
     z-index: 9999;
     pointer-events: none;
     opacity: 0;

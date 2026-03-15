@@ -197,6 +197,9 @@ class EventHandler {
             case BAR_EVENTS.GAME_OVER:
                 this.handleGameOver(data);
                 break;
+            case BAR_EVENTS.PLAYER_BECAME_SPECTATOR:
+                // No state needed — handled via trigger
+                break;
             // NOTE: BAR_EVENTS.ALLY_STATS_UPDATE is handled in handleFullStatsUpdate
             // flow — add a dedicated case here if ally stats need separate state updates
         }
