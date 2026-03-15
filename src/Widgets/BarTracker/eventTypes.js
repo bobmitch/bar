@@ -46,6 +46,7 @@ const BAR_EVENTS = Object.freeze({
     // ── Status ────────────────────────────────────────────────────────────────
     OVERFLOW_STATUS_CHANGED     : 'OverflowStatusChanged',
     ALLY_STATES_UPDATE          : 'AllyStatesUpdate',
+    PLAYER_BECAME_SPECTATOR     : 'PlayerBecameSpectator',
 
 });
 
@@ -154,6 +155,14 @@ const BAR_EVENT_META = Object.freeze({
         throttle       : false,
         icon           : '👥',
         label          : 'Ally States',
+    },
+
+    [BAR_EVENTS.PLAYER_BECAME_SPECTATOR]: {
+        logToBattleLog : true,
+        logPriority    : 'high',
+        throttle       : false,
+        icon           : '👁️',
+        label          : 'Player Became Spectator',
     },
 
 });

@@ -273,6 +273,14 @@ class UIManager {
                     break;
                 }
 
+                case BAR_EVENTS.PLAYER_BECAME_SPECTATOR: {
+                    const playerName = eventData?.changedPlayerName || 'Unknown';
+                    const relation   = eventData?.relation || 'unknown';
+                    const icon       = relation === 'friendly' ? '🤝' : '⚔️';
+                    details = `<span class="event-details">${icon} ${playerName} became a spectator (${relation})</span>`;
+                    break;
+                }
+
                 default: {
                     // Catch-all: display the raw event type and whatever data exists.
                     // This means NEW events from the LUA widget are always visible in
