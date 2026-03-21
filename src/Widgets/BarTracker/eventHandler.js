@@ -173,6 +173,12 @@ class EventHandler {
             case BAR_EVENTS.UNIT_DESTROYED:
                 this.handleUnitDestroyed(data);
                 break;
+            case BAR_EVENTS.UNIT_TAKEN:
+                this.handleUnitTaken(data);
+                break;
+            case BAR_EVENTS.UNIT_GIVEN:
+                this.handleUnitGiven(data);
+                break;
             case BAR_EVENTS.FULL_STATS_UPDATE:
                 this.handleFullStatsUpdate(data);
                 break;
@@ -242,7 +248,7 @@ class EventHandler {
             unitTeam:      data.unitTeam,
             unitTier:      data.unitTier || 1,
             unitMetalCost: data.unitMetalCost || 0,
-            unitBuildSpeed: data.unitBuildSpeed || 0,   // ← ADDED: was always 0 before
+            unitBuildSpeed: data.unitBuildSpeed || 0,
             relation:      data.relation,
             playerName:    data.playerName
         });
@@ -251,7 +257,7 @@ class EventHandler {
             unitName:      data.unitName,
             unitID:        data.unitID,
             relation:      data.relation,
-            unitBuildSpeed: data.unitBuildSpeed || 0    // ← log it so it's verifiable
+            unitBuildSpeed: data.unitBuildSpeed || 0
         });
     }
 
@@ -289,7 +295,73 @@ class EventHandler {
             attacker: data.attackerName,
             metalLost: data.unitMetalCost
         });
+    }
 
+    /**
+     * Handle UnitTaken — fired when a unit leaves oldTeam via transfer.
+     * The Lua callin fires before UnitGiven, while the unit is still on oldTeam.
+     * We use this to update gameState ownership so subsequent trigger conditions
+     * (e.g. team army value) reflect the transfer immediately.
+     *
+     * data shape (from killbridge.lua):
+     *   unitID, unitDefID, unitName, unitTier, unitMetalCost, unitBuildSpeed,
+     *   oldTeam, newTeam, oldTeamPlayer, newTeamPlayer, relation,
+     *   myAllyTeamID, oldAllyTeamID, newAllyTeamID
+     *
+     * relation (from our perspective):
+     *   "self"  — we are giving the unit away (we are oldTeam)
+     *   "ally"  — an ally is giving to/from someone
+     *   "enemy" — enemy is involved
+     */
+    handleUnitTaken(data) {
+        if (typeof gameState === 'undefined') return;
+
+        console.log('📤 Unit taken:', {
+            unitName:     data.unitName,
+            unitID:       data.unitID,
+            from:         data.oldTeamPlayer,
+            to:           data.newTeamPlayer,
+            relation:     data.relation
+        });
+
+        // Update gameState ownership: transfer the unit from oldTeam to newTeam.
+        // UnitTaken fires first, so we do the state update here and UnitGiven
+        // is a no-op for gameState (avoids double-counting).
+        gameState.transferUnit(data.unitID, data.oldTeam, data.newTeam, {
+            unitDefID:     data.unitDefID,
+            unitName:      data.unitName,
+            unitTier:      data.unitTier || 1,
+            unitMetalCost: data.unitMetalCost || 0,
+            unitBuildSpeed: data.unitBuildSpeed || 0,
+            relation:      data.relation
+        });
+    }
+
+    /**
+     * Handle UnitGiven — fired when a unit arrives at newTeam via transfer.
+     * The Lua callin fires after UnitTaken, with the unit now on newTeam.
+     * gameState has already been updated by handleUnitTaken, so here we only
+     * need to log the event for trigger evaluation purposes.
+     *
+     * data shape: same as UnitTaken but relation reflects the receiver perspective:
+     *   "self"  — we received the unit (we are newTeam)
+     *   "ally"  — an ally received or sent
+     *   "enemy" — enemy received or sent
+     */
+    handleUnitGiven(data) {
+        if (typeof gameState === 'undefined') return;
+
+        console.log('📥 Unit given:', {
+            unitName:     data.unitName,
+            unitID:       data.unitID,
+            from:         data.oldTeamPlayer,
+            to:           data.newTeamPlayer,
+            relation:     data.relation
+        });
+
+        // gameState ownership was already updated in handleUnitTaken.
+        // No additional state mutation needed here — the event record logged
+        // by the main pipeline is sufficient for trigger evaluation.
     }
 
     handleUpdateAllUnits(data) {
@@ -357,8 +429,7 @@ class EventHandler {
         if (data.event !== BAR_EVENTS.ALLY_STATES_UPDATE) return;
 
         for (const [teamID, stats] of Object.entries(data.teams)) {
-            //let team = gameState.getTeam(parseInt(teamID));
-            const team = gameState.initTeam(parseInt(teamID), {       // ✅ idempotent — safe to call repeatedly
+            const team = gameState.initTeam(parseInt(teamID), {
                 isMyAlly:   true,
                 playerName: stats.playerName
             });
@@ -421,11 +492,6 @@ class EventHandler {
 
         console.log('🎨 Ally team colors stored:', data.colors);
     }
-    // ── USAGE EXAMPLE (barWidgets.js or any chart code) ──────────
-    // When you need a per-player color for a chart series, do:
-    //
-    //   const team  = gameState.teams.get(teamID);
-    //   const color = team?.color?.hex ?? '#4ab4ff';   // fallback
 
     /**
      * TRIGGER EVALUATION

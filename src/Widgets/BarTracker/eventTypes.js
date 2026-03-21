@@ -37,6 +37,8 @@ const BAR_EVENTS = Object.freeze({
     UNIT_FINISHED               : 'UnitFinished',       // Unit construction complete
     UNIT_DAMAGED                : 'UnitDamaged',        // Unit took damage
     UNIT_DESTROYED              : 'UnitDestroyed',      // Unit killed
+    UNIT_TAKEN                  : 'UnitTaken',          // Unit transferred away from oldTeam (fires before UnitGiven)
+    UNIT_GIVEN                  : 'UnitGiven',          // Unit transferred to newTeam (fires after UnitTaken)
 
     // ── Stats ─────────────────────────────────────────────────────────────────
     FULL_STATS_UPDATE           : 'FullStatsUpdate',    // My team's resource + combat stats
@@ -115,6 +117,27 @@ const BAR_EVENT_META = Object.freeze({
         throttle       : false,
         icon           : '💀',
         label          : 'Unit Destroyed',
+    },
+
+    // UnitTaken fires when our team loses a unit via transfer, or we are
+    // the recipient team in the "taken from" sense. Logged to battle log
+    // since transfers are meaningful game events — ally sharing, capture, etc.
+    [BAR_EVENTS.UNIT_TAKEN]: {
+        logToBattleLog : true,
+        logPriority    : 'high',
+        throttle       : false,
+        icon           : '📤',
+        label          : 'Unit Transferred Out',
+    },
+
+    // UnitGiven fires when our team receives a unit via transfer, or we are
+    // the sender in the "given to" sense. Always paired with a UnitTaken event.
+    [BAR_EVENTS.UNIT_GIVEN]: {
+        logToBattleLog : true,
+        logPriority    : 'high',
+        throttle       : false,
+        icon           : '📥',
+        label          : 'Unit Transferred In',
     },
 
     [BAR_EVENTS.FULL_STATS_UPDATE]: {

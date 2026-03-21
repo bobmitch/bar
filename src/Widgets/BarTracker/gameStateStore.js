@@ -253,6 +253,89 @@ class GameStateStore {
         return unit;
     }
 
+    /**
+     * Transfer a unit from oldTeamID to newTeamID.
+     *
+     * Called from eventHandler.handleUnitTaken (which fires first) so that
+     * gameState reflects the new ownership before UnitGiven arrives.
+     * Adjusts team unit-count, metalCost, and buildSpeed counters for both teams
+     * without touching kill/loss tallies (those are only for combat deaths).
+     *
+     * unitMeta is an optional object with { unitDefID, unitName, unitTier,
+     * unitMetalCost, unitBuildSpeed, relation } in case the unit record doesn't
+     * exist yet in gameState (e.g. the unit was built before the widget loaded).
+     */
+    transferUnit(unitID, oldTeamID, newTeamID, unitMeta = {}) {
+        const unit = this.units.get(unitID);
+
+        if (!unit) {
+            // Unit wasn't tracked (pre-widget build). Create a minimal record
+            // so subsequent lookups work. Use metadata from the event payload.
+            console.log(`📤 transferUnit: unit ${unitID} not in map — creating minimal record`);
+            this.units.set(unitID, {
+                unitID,
+                unitDefID:    unitMeta.unitDefID  || -1,
+                unitName:     unitMeta.unitName   || 'Unknown',
+                unitTier:     unitMeta.unitTier   || 1,
+                metalCost:    unitMeta.unitMetalCost  || 0,
+                buildSpeed:   unitMeta.unitBuildSpeed || 0,
+                teamID:       newTeamID,   // already moved
+                relation:     unitMeta.relation || 'unknown',
+                createdAt:    this.gameState.gameTime,
+                damageTaken:  0,
+                damageDealt:  0,
+                killCount:    0,
+                metalKilled:  0,
+                assistCount:  0,
+                lastDamagedAt:   null,
+                lastDamagedBy:   null,
+                inCombat:     false,
+                destroyed:    false,
+                destroyedAt:  null,
+                destroyedBy:  null,
+                destroyedByTeam: null,
+                creatorPlayer: 'Unknown',
+                transferredFrom: oldTeamID
+            });
+            // Still update the new team's counters
+            if (this.teams.has(newTeamID)) {
+                const newTeam = this.teams.get(newTeamID);
+                newTeam.unitCount      += 1;
+                newTeam.totalMetalCost += (unitMeta.unitMetalCost || 0);
+                newTeam.teamBuildSpeed += (unitMeta.unitBuildSpeed || 0);
+            }
+            return this.units.get(unitID);
+        }
+
+        const metalCost  = unit.metalCost  || 0;
+        const buildSpeed = unit.buildSpeed || 0;
+
+        // Remove from old team
+        if (this.teams.has(oldTeamID)) {
+            const oldTeam = this.teams.get(oldTeamID);
+            oldTeam.unitCount      = Math.max(0, oldTeam.unitCount - 1);
+            oldTeam.totalMetalCost = Math.max(0, oldTeam.totalMetalCost - metalCost);
+            oldTeam.teamBuildSpeed = Math.max(0, oldTeam.teamBuildSpeed - buildSpeed);
+        }
+
+        // Add to new team (ensure it exists first)
+        this.initTeam(newTeamID, {});
+        if (this.teams.has(newTeamID)) {
+            const newTeam = this.teams.get(newTeamID);
+            newTeam.unitCount      += 1;
+            newTeam.totalMetalCost += metalCost;
+            newTeam.teamBuildSpeed += buildSpeed;
+        }
+
+        // Update the unit's own team reference and record the transfer
+        unit.teamID          = newTeamID;
+        unit.transferredFrom = oldTeamID;
+        unit.transferredAt   = this.gameState.gameTime;
+
+        console.log(`📤 transferUnit: ${unit.unitName} (${unitID}) moved from team ${oldTeamID} → ${newTeamID}`);
+        return unit;
+    }
+
     damageUnit(unitID, damage, attackerID, attackerTeam) {
         const unit = this.units.get(unitID);
         if (!unit) return null;

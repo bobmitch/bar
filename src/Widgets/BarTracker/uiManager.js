@@ -281,6 +281,37 @@ class UIManager {
                     break;
                 }
 
+                // UnitTaken — our team sent a unit to another team, or we are
+                // receiving notification that a unit was taken from someone else.
+                // relation: "self" = we gave it away, "ally"/"enemy" = other team gave/received.
+                case BAR_EVENTS.UNIT_TAKEN: {
+                    const unitName   = eventData?.unitName      || 'unknown';
+                    const fromPlayer = eventData?.oldTeamPlayer  || 'unknown';
+                    const toPlayer   = eventData?.newTeamPlayer  || 'unknown';
+                    const relation   = eventData?.relation       || 'unknown';
+                    const isOurs     = relation === 'self';
+                    const colour     = isOurs ? '#f0c040' : '#a0c0e0';
+                    details = `<span class="event-details" style="color:${colour};">
+                        ${meta.icon} ${this.getName(unitName)} transferred: ${fromPlayer} → ${toPlayer}
+                    </span>`;
+                    break;
+                }
+
+                // UnitGiven — a unit has arrived at newTeam.
+                // relation: "self" = we received it, "ally"/"enemy" = other team received.
+                case BAR_EVENTS.UNIT_GIVEN: {
+                    const unitName   = eventData?.unitName      || 'unknown';
+                    const fromPlayer = eventData?.oldTeamPlayer  || 'unknown';
+                    const toPlayer   = eventData?.newTeamPlayer  || 'unknown';
+                    const relation   = eventData?.relation       || 'unknown';
+                    const isOurs     = relation === 'self';
+                    const colour     = isOurs ? '#30f0a0' : '#a0c0e0';
+                    details = `<span class="event-details" style="color:${colour};">
+                        ${meta.icon} ${this.getName(unitName)} received: ${fromPlayer} → ${toPlayer}
+                    </span>`;
+                    break;
+                }
+
                 default: {
                     // Catch-all: display the raw event type and whatever data exists.
                     // This means NEW events from the LUA widget are always visible in
@@ -365,8 +396,6 @@ class UIManager {
         // Reset game timer
         const gameTimeEl = document.getElementById('game-time');
         if (gameTimeEl) gameTimeEl.textContent = '00:00';
-
-        
 
         if (typeof chartWidgets !== 'undefined') {
             chartWidgets.reset();

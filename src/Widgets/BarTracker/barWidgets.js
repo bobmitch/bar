@@ -474,16 +474,22 @@ const CHART_DEFS = [
 ];
 
 // ── Chart rendering engine ────────────────────────────────────────────────────
-
+ 
 /**
  * BARChart — lightweight native-canvas line chart.
- * Supports 1 or 2 series.
+ * Supports 1 or N series.
  *
  * Animation strategy: scroll
  *   When a new data point is pushed, displayData immediately mirrors data (no
  *   value morphing). The chart area is translated right by one point-width and
  *   that offset eases back to zero over SCROLL_DUR_MS, producing a natural
  *   "new point slides in from the right" effect.
+ *
+ * Performance: dirty-flag rendering
+ *   The RAF loop runs continuously but only calls _draw() when _dirty is true.
+ *   _dirty is set by: pushSeries(), resize(), clear(), and during scroll
+ *   animation frames. This means idle charts (no new data, no animation) cost
+ *   only a single boolean check per frame instead of a full canvas repaint.
  *
  * Lifecycle:
  *   new BARChart(canvas, def)
@@ -499,16 +505,16 @@ class BARChart {
         this.ctx     = canvas.getContext('2d');
         this.def     = def;
         this.isDual  = Array.isArray(def.series);
-
+ 
         // N-series support: honour an explicit seriesCount on the def,
         // otherwise fall back to series array length or 1 for single-series.
         const N = def.seriesCount ?? (this.isDual ? def.series.length : 1);
         this.seriesCount = N;
-
+ 
         this.MAX_POINTS    = 60;
         this.data          = Array.from({ length: N }, () => []);
         this.displayData   = Array.from({ length: N }, () => []);
-
+ 
         // ── Scroll animation state ────────────────────────────────────────────
         // _scrollOffset is a pixel amount added to the right of the plotted line
         // and eased back to zero, giving a "slide in" effect on each new point.
@@ -516,31 +522,38 @@ class BARChart {
         this._scrollFrom   = 0;      // offset at animation start
         this._scrollStart  = 0;      // performance.now() timestamp
         this.SCROLL_DUR_MS = 220;    // total slide duration in ms
-
+ 
+        // ── Dirty flag ───────────────────────────────────────────────────────
+        // true  → _draw() will be called this frame
+        // false → loop skips _draw() entirely (idle charts are near-zero cost)
+        // Start dirty so the initial "awaiting data" placeholder renders once.
+        this._dirty = true;
+ 
         this.PAD = { top: 10, right: 10, bottom: 26, left: 48 };
-
+ 
         this._loop = this._loop.bind(this);
         this._raf  = requestAnimationFrame(this._loop);
     }
-
+ 
     push(value) { this.pushSeries(0, value); }
-
+ 
     pushSeries(i, value) {
         this.data[i].push(value);
         if (this.data[i].length > this.MAX_POINTS) this.data[i].shift();
-
+ 
         // displayData always mirrors data directly — no value morphing.
         // All series are synced together so the scroll fires once per update.
         for (let s = 0; s < this.data.length; s++) {
             this.displayData[s] = [...this.data[s]];
         }
-
+ 
         // Kick off a new scroll animation from the current offset (handles
         // rapid pushes gracefully by continuing from wherever we are).
         this._scrollFrom  = this._scrollOffset;
         this._scrollStart = performance.now();
+        this._dirty       = true;
     }
-
+ 
     resize(w, h) {
         const dpr = window.devicePixelRatio || 1;
         this.canvas.width  = w * dpr;
@@ -548,8 +561,9 @@ class BARChart {
         this.canvas.style.width  = w + 'px';
         this.canvas.style.height = h + 'px';
         this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this._dirty = true;
     }
-
+ 
     clear() {
         const N = this.seriesCount;
         this.data          = Array.from({ length: N }, () => []);
@@ -557,19 +571,22 @@ class BARChart {
         this._scrollOffset = 0;
         this._scrollFrom   = 0;
         this._scrollStart  = 0;
+        this._dirty        = true;
     }
-
+ 
     destroy() {
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = null;
     }
-
+ 
     // ── Animation loop ────────────────────────────────────────────────────────
-
+ 
     _loop(ts) {
         if (!this._raf) return;
-
-        if (this._scrollFrom > 0 || this._scrollOffset > 0) {
+ 
+        const isAnimating = this._scrollFrom > 0 || this._scrollOffset > 0;
+ 
+        if (isAnimating) {
             const elapsed = ts - this._scrollStart;
             const t       = Math.min(1, elapsed / this.SCROLL_DUR_MS);
             // easeOutQuart — snappy start, soft landing
@@ -579,14 +596,19 @@ class BARChart {
                 this._scrollOffset = 0;
                 this._scrollFrom   = 0;
             }
+            this._dirty = true;
         }
-
-        this._draw();
+ 
+        if (this._dirty) {
+            this._draw();
+            this._dirty = false;
+        }
+ 
         this._raf = requestAnimationFrame(this._loop);
     }
-
+ 
     // ── Drawing ───────────────────────────────────────────────────────────────
-
+ 
     _draw() {
         const { canvas, ctx, def, PAD } = this;
         const W  = canvas.width  / (window.devicePixelRatio || 1);
@@ -595,49 +617,50 @@ class BARChart {
         const cY = PAD.top;
         const cW = W - PAD.left - PAD.right;
         const cH = H - PAD.top  - PAD.bottom;
-
+ 
         ctx.clearRect(0, 0, W, H);
-
+ 
         // Background
         ctx.fillStyle = 'rgba(8, 12, 20, 0.72)';
         this._roundRect(ctx, 0, 0, W, H, 4);
         ctx.fill();
-
+ 
         // Border
         ctx.strokeStyle = 'rgba(90, 180, 255, 0.18)';
         ctx.lineWidth   = 1;
         this._roundRect(ctx, 0.5, 0.5, W - 1, H - 1, 4);
         ctx.stroke();
-
+ 
         // Check we have enough data to draw
-        const allPts   = this.displayData.flat().filter(v => !isNaN(v));
-        const hasData  = this.displayData.some(s => s.length >= 2);
-
+        const allPts  = this.displayData.flat().filter(v => !isNaN(v));
+        const hasData = this.displayData.some(s => s.length >= 2);
+ 
         if (!hasData) {
             this._drawHeader(ctx, W, H);
             this._drawNoData(ctx, cX, cY, cW, cH);
             return;
         }
-
+ 
         // Shared Y range across all series
-        let minV       = def.yMin ?? Math.min(...allPts);
-        let maxV       = def.yMax ?? Math.max(...allPts);
-        
+        let minV = def.yMin ?? Math.min(...allPts);
+        let maxV = def.yMax ?? Math.max(...allPts);
+ 
         if (def.yMin == null || def.yMax == null) {
             const span     = maxV - minV;
             const rangePad = span > 0 ? span * 0.12 : Math.max(maxV * 0.1, 100);
             minV = def.yMin ?? Math.max(0, minV - rangePad);
             maxV = def.yMax ?? maxV + rangePad;
         }
-
-        // calc range after padding so the gridlines and value labels reflect the actual chart scale, not just the data range
-        const range    = maxV - minV || 1;
-
+ 
+        // calc range after padding so the gridlines and value labels reflect
+        // the actual chart scale, not just the data range
+        const range = maxV - minV || 1;
+ 
         // Gridlines + Y labels (drawn outside clip so labels stay visible)
         ctx.font         = '9px "Share Tech Mono", monospace';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'middle';
-
+ 
         for (let i = 0; i <= 4; i++) {
             const v = minV + (range * i / 4);
             const y = cY + cH - (cH * i / 4);
@@ -650,15 +673,15 @@ class BARChart {
             ctx.fillStyle = 'rgba(160,190,220,0.55)';
             ctx.fillText(def.formatY(v), cX - 5, y);
         }
-
+ 
         const toX = (pts, i) => cX + (i / (pts.length - 1)) * cW;
         const toY = (v)       => cY + cH - ((v - minV) / range) * cH;
-
-        // Series list: unified structure for single and dual
+ 
+        // Series list: unified structure for single and dual/multi
         const seriesList = this.isDual
             ? def.series.map((s, i) => ({ pts: this.displayData[i], color: s.color, label: s.label }))
             : [{ pts: this.displayData[0], color: def.color, label: def.label }];
-
+ 
         // ── Scroll clip + translate ───────────────────────────────────────────
         // Clip to the chart plot area so the sliding line doesn't bleed into
         // the Y-axis labels or outside the widget border.
@@ -669,15 +692,15 @@ class BARChart {
         ctx.rect(cX, cY, cW, cH);
         ctx.clip();
         ctx.translate(this._scrollOffset, 0);
-
+ 
         for (const { pts, color } of seriesList) {
             if (pts.length < 2) continue;
-
+ 
             // Gradient fill
             const grad = ctx.createLinearGradient(0, cY, 0, cY + cH);
             grad.addColorStop(0, this._hexAlpha(color, 0.20));
             grad.addColorStop(1, this._hexAlpha(color, 0.01));
-
+ 
             ctx.beginPath();
             ctx.moveTo(toX(pts, 0), toY(pts[0]));
             for (let i = 1; i < pts.length; i++) {
@@ -689,7 +712,7 @@ class BARChart {
             ctx.closePath();
             ctx.fillStyle = grad;
             ctx.fill();
-
+ 
             // Line
             ctx.beginPath();
             ctx.moveTo(toX(pts, 0), toY(pts[0]));
@@ -705,7 +728,7 @@ class BARChart {
             ctx.shadowBlur  = 6;
             ctx.stroke();
             ctx.shadowBlur  = 0;
-
+ 
             // End dot
             const lx = toX(pts, pts.length - 1);
             const ly = toY(pts[pts.length - 1]);
@@ -717,15 +740,15 @@ class BARChart {
             ctx.fill();
             ctx.shadowBlur  = 0;
         }
-
+ 
         ctx.restore(); // removes clip and scroll translate
-
+ 
         // Latest value labels — drawn after restore so they sit at true position
         // and are never clipped by the chart area rect.
         ctx.font         = '10px "Rajdhani", sans-serif';
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'top';
-
+ 
         seriesList.forEach(({ pts, color, label }, idx) => {
             if (!pts.length) return;
             ctx.fillStyle = color;
@@ -735,15 +758,15 @@ class BARChart {
                 : `${label} ${def.formatY(pts[pts.length - 1])}`;
             ctx.fillText(text, cX + cW, cY + 1 + idx * 13);
         });
-
+ 
         this._drawHeader(ctx, W, H);
-
+ 
         // Optional per-chart overlay hook (e.g. stall badge on efficiency chart)
         if (typeof this.def.drawOverlay === 'function') {
             this.def.drawOverlay(ctx, W, H, PAD);
         }
     }
-
+ 
     _drawHeader(ctx, W, H) {
         ctx.font         = '10px "Rajdhani", sans-serif';
         ctx.textAlign    = 'left';
@@ -751,7 +774,7 @@ class BARChart {
         ctx.fillStyle    = 'rgba(160,190,220,0.55)';
         ctx.fillText(`${this.def.icon}  ${this.def.label}`, this.PAD.left + 2, H - 5);
     }
-
+ 
     _drawNoData(ctx, cX, cY, cW, cH) {
         ctx.font         = '10px "Share Tech Mono", monospace';
         ctx.textAlign    = 'center';
@@ -759,7 +782,7 @@ class BARChart {
         ctx.fillStyle    = 'rgba(160,190,220,0.25)';
         ctx.fillText('— awaiting data —', cX + cW / 2, cY + cH / 2);
     }
-
+ 
     _roundRect(ctx, x, y, w, h, r) {
         if (ctx.roundRect) {
             ctx.roundRect(x, y, w, h, r);
@@ -777,7 +800,7 @@ class BARChart {
             ctx.closePath();
         }
     }
-
+ 
     _hexAlpha(color, alpha) {
         if (color.startsWith('#') && color.length === 7) {
             const r = parseInt(color.slice(1, 3), 16);
