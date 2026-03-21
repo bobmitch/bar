@@ -1,7 +1,7 @@
 {
 	"title":"Triggers",
 	"id":"triggers",
-    "list":["repeatable","repeatable_interval"],
+    "list":["repeatable","repeatable_interval","priority","interruptable"],
 	"fields": [
 		{
 			"type": "Text",
@@ -30,6 +30,25 @@
             "default":0,
             "required": true
         },
+		{
+			"type": "Text",
+			"label": "Priority",
+			"name": "priority",
+			"id": "priority",
+			"description": "Integer priority (default 0). Higher values take precedence over lower ones when multiple triggers fire simultaneously. A higher-priority trigger can interrupt a lower-priority sound/image that is marked as interruptable.",
+			"default": 0,
+			"required": false,
+			"input_type": "number"
+		},
+		{
+			"type": "Checkbox",
+			"label": "Interruptable",
+			"name": "interruptable",
+			"id": "interruptable",
+			"description": "Check to allow a higher-priority trigger to cut this one short. Uncheck to protect this trigger's audio/image from being interrupted by anything except a strictly higher-priority trigger.",
+			"default": 1,
+			"required": true
+		},
 		{
 			"type": "Textarea",
 			"label": "Conditions (JS)",

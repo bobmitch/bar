@@ -7,10 +7,26 @@
  * - Support for multiple soundpacks with dynamic switching
  * - Per-trigger enable/disable states
  * - Cooldown management to prevent spam
+ * - Priority system: higher priority triggers can interrupt lower priority ones
+ *   (if the active trigger is marked interruptable). Lower priority triggers
+ *   are silently suppressed (audio + image) while a higher priority is active.
  * 
  * Fix #3: Non-repeatable triggers now use a permanent `firedOnce` flag that
  *         is only cleared on resetForNewGame(). The cooldown timeout no longer
  *         re-opens them.
+ *
+ * Priority system:
+ *   - Each trigger has a `priority` integer (default 0; higher = more important).
+ *   - Each trigger has an `interruptable` bool (default true).
+ *   - When a trigger fires:
+ *       • If something is already playing and it is NOT interruptable, and the
+ *         new trigger's priority is <= the active priority → audio + image are
+ *         suppressed for this fire (the trigger actions still run).
+ *       • If the active sound IS interruptable and the new trigger's priority
+ *         is >= the active priority → the active sound is stopped and the new
+ *         one plays.
+ *       • Priority state resets automatically via AudioBufferSourceNode.onended
+ *         (Web Audio path) or Audio.addEventListener('ended') (HTML5 fallback).
  */
 
 class TriggerEngine {
@@ -24,11 +40,77 @@ class TriggerEngine {
         this.audioContext = null;
         this.audioCache = new Map(); // Cache audio buffers for faster playback
         
+        // ── Priority / interrupt state ────────────────────────────────────────
+        // Tracks whatever is currently playing so incoming triggers can decide
+        // whether to suppress or interrupt.
+        this._activePriority      = -Infinity; // priority of the currently playing sound
+        this._activeInterruptable = true;       // whether the current sound can be cut short
+        this._activeSourceNode    = null;       // current AudioBufferSourceNode (Web Audio path)
+        this._activeAudioEl       = null;       // current Audio element (HTML5 fallback path)
+
         // Initialize Web Audio API
         this.initializeAudio();
 
         this.activeSoundpackIsOwner = false;
     }
+
+    // ── Priority helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Returns true if a new trigger with `newPriority` is allowed to play
+     * audio/show an image right now.
+     *
+     * Rules:
+     *   • Nothing playing                          → always allowed
+     *   • Active is interruptable AND new >= active → allowed (will interrupt)
+     *   • Active is NOT interruptable              → allowed only if new > active
+     *     (strictly higher priority can always break through)
+     */
+    _canPlay(newPriority) {
+        if (this._activePriority === -Infinity) return true;
+        if (this._activeInterruptable) return newPriority >= this._activePriority;
+        return newPriority > this._activePriority;
+    }
+
+    /**
+     * Stop whatever is currently playing (if anything) without waiting for
+     * natural end.  Safe to call when nothing is active.
+     */
+    _stopActive() {
+        if (this._activeSourceNode) {
+            try { this._activeSourceNode.stop(); } catch (_) {}
+            this._activeSourceNode = null;
+        }
+        if (this._activeAudioEl) {
+            try {
+                this._activeAudioEl.pause();
+                this._activeAudioEl.currentTime = 0;
+            } catch (_) {}
+            this._activeAudioEl = null;
+        }
+        this._resetActivePriority();
+    }
+
+    /**
+     * Reset priority state to "nothing playing".
+     * Called from onended callbacks and _stopActive().
+     */
+    _resetActivePriority() {
+        this._activePriority      = -Infinity;
+        this._activeInterruptable = true;
+        this._activeSourceNode    = null;
+        this._activeAudioEl       = null;
+    }
+
+    /**
+     * Claim the priority lock for a new sound about to start.
+     */
+    _claimPriority(priority, interruptable) {
+        this._activePriority      = priority;
+        this._activeInterruptable = interruptable;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     _applyImageMapping(soundpackId) {
         const imageMap = this.soundpackImages?.get(soundpackId) || {};
@@ -101,6 +183,8 @@ class TriggerEngine {
             cooldown = this.defaultCooldown,
             repeatable = true,
             image_src = null,
+            priority = 0,
+            interruptable = true,
             conditions = [],
             actions = [],
         } = triggerDef;
@@ -114,7 +198,9 @@ class TriggerEngine {
             enabled,
             cooldown,
             repeatable,
-            image_src, 
+            image_src,
+            priority,
+            interruptable,
             conditions: Array.isArray(conditions) ? conditions : [conditions],
             actions: Array.isArray(actions) ? actions : [actions],
             createdAt: Date.now(),
@@ -129,8 +215,7 @@ class TriggerEngine {
             enabled: enabled,
             vars:{} // Placeholder for any future per-trigger variables or state needed by actions
         });
-        //console.log(triggerDef);
-        console.log(`✅ Trigger registered: ${name} (ID: ${id}, repeatable: ${repeatable}${image_src ? ', has image' : ''})`);
+        console.log(`✅ Trigger registered: ${name} (ID: ${id}, repeatable: ${repeatable}, priority: ${priority}, interruptable: ${interruptable}${image_src ? ', has image' : ''})`);
     }
 
     /**
@@ -190,7 +275,7 @@ class TriggerEngine {
             return;
         }
 
-        console.log(`🎯 TRIGGER FIRED: ${trigger.name} (ID: ${triggerId})`);
+        console.log(`🎯 TRIGGER FIRED: ${trigger.name} (ID: ${triggerId}, priority: ${trigger.priority})`);
 
         // Update state
         state.lastFired = Date.now();
@@ -200,13 +285,9 @@ class TriggerEngine {
         // Fix #3: mark non-repeatable triggers as permanently spent
         if (!trigger.repeatable) {
             state.firedOnce = true;
-            // No cooldown timeout needed — firedOnce gates it permanently.
-            // Still set cooldownActive so the timeout below clears it cleanly
-            // (guards against any edge-case double-evaluation in the same tick).
         }
 
         // Execute trigger actions
-        // save context for better trigger information in actions, if needed in the future
         let context = null;
         for (const action of trigger.actions) {
             try {
@@ -217,28 +298,63 @@ class TriggerEngine {
             }
         }
 
-        state.lastContext = context; // Store last action result for potential use in UI or debugging
+        state.lastContext = context;
 
-        // Play audio cue if soundpack has audio for this trigger
-        this.playAudioForTrigger(triggerId);
+        // ── Priority gate for audio + image ──────────────────────────────────
+        // Actions always run. Audio and image are suppressed or interrupted
+        // based on the priority rules.
+        const triggerPriority     = trigger.priority     ?? 0;
+        const triggerInterruptable = trigger.interruptable ?? true;
+
+        if (this._canPlay(triggerPriority)) {
+            // Stop the current sound if we are interrupting it
+            if (this._activePriority !== -Infinity) {
+                console.log(`🔀 Interrupting active sound (priority ${this._activePriority}) with priority ${triggerPriority}`);
+                this._stopActive();
+            }
+
+            // Claim the priority lock before async audio starts so a rapid
+            // second trigger evaluated in the same tick sees the correct state.
+            this._claimPriority(triggerPriority, triggerInterruptable);
+
+            // Play audio cue (async; will reset priority via onended)
+            this.playAudioForTrigger(triggerId);
+
+            // Emit trigger event for widgets (image display checks priority internally)
+            window.dispatchEvent(new CustomEvent('triggerFired', {
+                detail: {
+                    triggerId,
+                    triggerName:   trigger.name,
+                    timestamp:     Date.now(),
+                    context,
+                    image_src:     trigger.image_src ?? null,
+                    priority:      triggerPriority,
+                    interruptable: triggerInterruptable,
+                    allowed:       true,
+                }
+            }));
+        } else {
+            // Suppressed: log but don't play audio or show image
+            console.log(`🔇 Trigger "${trigger.name}" suppressed (priority ${triggerPriority} <= active ${this._activePriority}, active not interruptable)`);
+
+            window.dispatchEvent(new CustomEvent('triggerFired', {
+                detail: {
+                    triggerId,
+                    triggerName:   trigger.name,
+                    timestamp:     Date.now(),
+                    context,
+                    image_src:     null,   // suppress image
+                    priority:      triggerPriority,
+                    interruptable: triggerInterruptable,
+                    allowed:       false,  // widgets check this to skip display
+                }
+            }));
+        }
 
         // Schedule cooldown reset.
-        // For non-repeatable triggers this just clears the cooldownActive flag;
-        // firedOnce remains true and keeps the trigger blocked for the rest of the game.
         setTimeout(() => {
             state.cooldownActive = false;
         }, trigger.cooldown);
-
-        // Emit event for UI updates
-        // context now on DOM event for potential use in widgets or other UI components
-        window.dispatchEvent(new CustomEvent('triggerFired', {
-            detail: {
-                triggerId,
-                triggerName: trigger.name,
-                timestamp: Date.now(),
-                context
-            }
-        }));
     }
 
     /**
@@ -253,6 +369,8 @@ class TriggerEngine {
             state.cooldownActive = false;
             state.firedOnce = false;    // Fix #3: re-arm non-repeatable triggers for the new game
         }
+        // Also reset any active audio priority state
+        this._stopActive();
         console.log('🔄 TriggerEngine: per-game state reset');
     }
 
@@ -263,12 +381,17 @@ class TriggerEngine {
     async playAudioForTrigger(triggerId) {
         if (!this.activeSoundpackId) {
             console.log(`No active soundpack for trigger ${triggerId}`);
+            // Nothing to play; release the priority lock immediately
+            this._resetActivePriority();
             return;
         }
 
         const soundpack = this.soundpacks.get(this.activeSoundpackId);
         if (!soundpack || !soundpack[triggerId]) {
             console.log(`No audio configured for trigger ${triggerId}`);
+            // No audio file; release the priority lock immediately so it
+            // doesn't block subsequent triggers unnecessarily.
+            this._resetActivePriority();
             return;
         }
 
@@ -285,6 +408,7 @@ class TriggerEngine {
             }
         } catch (err) {
             console.error(`Error playing audio for trigger ${triggerId}:`, err);
+            this._resetActivePriority();
         }
     }
 
@@ -301,8 +425,8 @@ class TriggerEngine {
             }
 
             const audioBuffer = this.audioCache.get(audioUrl);
-            const source = this.audioContext.createBufferSource();
-            const gainNode = this.audioContext.createGain();
+            const source      = this.audioContext.createBufferSource();
+            const gainNode    = this.audioContext.createGain();
 
             source.buffer = audioBuffer;
             source.connect(gainNode);
@@ -311,10 +435,25 @@ class TriggerEngine {
             const masterVolume = document.getElementById('master-volume')?.value || 80;
             gainNode.gain.value = (masterVolume / 100) * 0.8;
 
+            // ── onended: release priority lock when audio finishes naturally ──
+            source.onended = () => {
+                // Only reset if this source is still the active one.
+                // If it was interrupted, _stopActive() already cleared the ref.
+                if (this._activeSourceNode === source) {
+                    console.log(`🔔 Audio ended for trigger ${triggerId} — releasing priority lock`);
+                    this._resetActivePriority();
+                }
+            };
+
+            // Register as the active source BEFORE starting so the onended
+            // guard above can identify it correctly.
+            this._activeSourceNode = source;
+
             source.start(0);
-            console.log(`🔊 Playing audio for trigger ${triggerId}`);
+            console.log(`🔊 Playing audio for trigger ${triggerId} (Web Audio)`);
         } catch (err) {
             console.error(`Web Audio API error:`, err);
+            this._resetActivePriority();
             this.playAudioViaHTML5(audioUrl, triggerId);
         }
     }
@@ -325,12 +464,27 @@ class TriggerEngine {
             const masterVolume = document.getElementById('master-volume')?.value || 80;
             audio.volume = Math.min(1, (masterVolume / 100) * 0.8);
             audio.src = audioUrl;
+
+            // ── ended: release priority lock when audio finishes naturally ──
+            audio.addEventListener('ended', () => {
+                if (this._activeAudioEl === audio) {
+                    console.log(`🔔 Audio ended for trigger ${triggerId} (HTML5) — releasing priority lock`);
+                    this._resetActivePriority();
+                }
+            }, { once: true });
+
+            // Register as active BEFORE play() call
+            this._activeAudioEl = audio;
+
             audio.play().catch(err => {
                 console.error(`Audio playback error:`, err);
+                if (this._activeAudioEl === audio) this._resetActivePriority();
             });
-            console.log(`🔊 Playing audio for trigger ${triggerId}`);
+
+            console.log(`🔊 Playing audio for trigger ${triggerId} (HTML5)`);
         } catch (err) {
             console.error(`Error creating audio element:`, err);
+            this._resetActivePriority();
         }
     }
 
@@ -423,7 +577,9 @@ class TriggerEngine {
             firedOnce: state.firedOnce,
             fireCount: state.fireCount,
             lastFired: state.lastFired ? new Date(state.lastFired) : null,
-            cooldownActive: state.cooldownActive
+            cooldownActive: state.cooldownActive,
+            priority: trigger.priority,
+            interruptable: trigger.interruptable,
         };
     }
 

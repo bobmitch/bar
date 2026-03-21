@@ -297,6 +297,8 @@ class BarTracker extends Widget {
 				$output_js .= "name: \"" . addslashes($trigger->title) . "\",";
 				$output_js .= "description: \"" . addslashes($trigger->description) . "\",";
 				$output_js .= "cooldown: " . ($trigger->repeatable_interval ? ($trigger->repeatable_interval * 1000) : 'triggerEngine.defaultCooldown') . ",";
+				$output_js .= "priority: " . ($trigger->priority ?? 0) . ",";
+				$output_js .= "interruptable: " . ($trigger->interruptable === null || $trigger->interruptable == 1 ? 'true' : 'false') . ",";
 				$output_js .= "repeatable: " . ($trigger->repeatable==1 ? 'true' : 'false') . ",";
 				$output_js .= "image_src: "   . ($image_src ? '"' . $image_src . '"' : 'null') . ",";
 				$output_js .= "conditions: [" . $conditions . "],";
